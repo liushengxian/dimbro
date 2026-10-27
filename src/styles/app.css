@@ -1,0 +1,80 @@
+.app-shell {
+  position: relative;
+  min-height: 100vh;
+  min-width: 100vw;
+  overflow: hidden;
+  background: var(--bg-void);
+}
+
+.app-shell[data-screen="home"],
+.app-shell[data-screen="characterSelect"] {
+  background:
+    radial-gradient(circle at 50% 20%, rgba(245, 165, 36, 0.06), transparent 45%),
+    var(--bg-void);
+}
+
+.app-shell > .game-canvas {
+  z-index: var(--z-canvas);
+}
+
+.app-shell[data-screen="battle"] .game-canvas,
+.app-shell[data-screen="waveClear"] .game-canvas,
+.app-shell[data-screen="upgrade"] .game-canvas,
+.app-shell[data-screen="shop"] .game-canvas,
+.app-shell[data-screen="result"] .game-canvas {
+  opacity: 1;
+  visibility: visible;
+}
+
+.save-corruption {
+  position: fixed;
+  top: 4.9rem;
+  left: 50%;
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: min(720px, calc(100vw - 3rem));
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--danger-line);
+  background: rgba(20, 8, 8, 0.92);
+  color: var(--danger-bright);
+  font-size: var(--text-sm);
+  transform: translateX(-50%);
+}
+
+.save-corruption strong {
+  color: var(--ink);
+}
+
+.save-corruption button {
+  flex: none;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--danger-line);
+  background: transparent;
+  color: var(--danger-bright);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.debug-overlay {
+  position: fixed;
+  left: 50%;
+  bottom: 0.45rem;
+  z-index: 90;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.2rem 0.7rem;
+  max-width: 44rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid rgba(103, 232, 199, 0.18);
+  background: rgba(3, 10, 8, 0.76);
+  color: var(--mint);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  transform: translateX(-50%);
+}

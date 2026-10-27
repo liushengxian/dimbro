@@ -1,0 +1,105 @@
+:root {
+  /* Core palette */
+  --bg-void: #040908;
+  --bg-deep: #07110f;
+  --bg-panel: #0b1714;
+  --bg-panel-raised: #10211c;
+  --bg-terminal: #06120f;
+  --bg-elevated: #142820;
+
+  --ink: #f2ead8;
+  --ink-soft: #d3cbb9;
+  --ink-muted: #93a69e;
+  --ink-dim: #5c6f67;
+  --ink-faint: #35463f;
+
+  --amber: #f5a524;
+  --amber-bright: #ffc866;
+  --amber-deep: #9b5c08;
+  --amber-wash: rgba(245, 165, 36, 0.12);
+  --amber-line: rgba(245, 165, 36, 0.28);
+  --amber-line-strong: rgba(245, 165, 36, 0.58);
+
+  --mint: #67e8c7;
+  --mint-bright: #a8ffe8;
+  --mint-dim: #2c8a74;
+  --mint-wash: rgba(103, 232, 199, 0.1);
+  --mint-line: rgba(103, 232, 199, 0.26);
+
+  --danger: #ff5c5c;
+  --danger-bright: #ff9a84;
+  --danger-wash: rgba(255, 92, 92, 0.11);
+  --danger-line: rgba(255, 92, 92, 0.34);
+
+  --cobalt: #6485ff;
+  --sunset: #ff6b4a;
+
+  --line: rgba(242, 234, 216, 0.1);
+  --line-soft: rgba(242, 234, 216, 0.06);
+  --line-strong: rgba(242, 234, 216, 0.2);
+
+  /* Typography */
+  --font-display: "Arial Black", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  --font-ui: "Avenir Next", "Helvetica Neue", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  --font-mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  --text-xs: 0.6875rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: clamp(2rem, 2.8vw, 2.75rem);
+  --text-hero: clamp(4.5rem, 10vw, 9.5rem);
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --space-9: 6rem;
+
+  /* Layout */
+  --page-max: 1440px;
+  --page-gutter: clamp(1.5rem, 4vw, 4rem);
+  --header-height: 4.25rem;
+  --content-max: 1180px;
+
+  /* Shape */
+  --radius-sm: 0.2rem;
+  --radius-md: 0.4rem;
+  --radius-lg: 0.75rem;
+  --radius-pill: 999px;
+  --border-hairline: 1px solid var(--line);
+  --border-amber: 1px solid var(--amber-line);
+  --border-mint: 1px solid var(--mint-line);
+
+  /* Effects */
+  --shadow-panel: 0 24px 80px rgba(0, 0, 0, 0.45);
+  --shadow-amber: 0 0 0 1px var(--amber-line), 0 0 32px rgba(245, 165, 36, 0.12);
+  --shadow-mint: 0 0 0 1px var(--mint-line), 0 0 32px rgba(103, 232, 199, 0.1);
+  --focus-ring: 0 0 0 2px var(--bg-deep), 0 0 0 4px var(--amber);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 220ms;
+  --dur-slow: 480ms;
+  --dur-scene: 700ms;
+
+  /* Layers */
+  --z-backdrop: 0;
+  --z-canvas: 10;
+  --z-screen: 20;
+  --z-hud: 30;
+  --z-overlay: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+}

@@ -1,0 +1,73 @@
+/* Programmer avatar ---------------------------------------------------- */
+
+.programmer-avatar {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.programmer-avatar__rig {
+  transform-box: fill-box;
+  transform-origin: 50% 92%;
+  animation: avatar-idle 4.8s var(--ease-in-out) infinite;
+}
+
+.programmer-avatar--hud .programmer-avatar__rig {
+  animation: none;
+}
+
+.programmer-avatar--detail {
+  filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.4));
+}
+
+.programmer-avatar--disabled {
+  filter: grayscale(1) brightness(0.78);
+  opacity: 0.62;
+}
+
+.programmer-avatar__glitch {
+  animation: avatar-glitch 3.2s steps(2, end) infinite;
+}
+
+.programmer-avatar__marks {
+  font-family: var(--font-mono);
+}
+
+@keyframes avatar-idle {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes avatar-glitch {
+  0%,
+  86%,
+  100% {
+    opacity: 0.8;
+    transform: translateX(0);
+  }
+  88% {
+    opacity: 0.35;
+    transform: translateX(-3px);
+  }
+  90% {
+    opacity: 0.95;
+    transform: translateX(2px);
+  }
+  92% {
+    opacity: 0.5;
+    transform: translateX(-1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .programmer-avatar__rig,
+  .programmer-avatar__glitch {
+    animation: none;
+  }
+}
