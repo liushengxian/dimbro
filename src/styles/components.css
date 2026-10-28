@@ -1,5 +1,10 @@
 /* Shared controls ------------------------------------------------------- */
 
+.game-icon {
+  display: block;
+  flex: none;
+}
+
 .ui-button {
   --button-bg: transparent;
   --button-border: var(--line-strong);

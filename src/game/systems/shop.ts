@@ -1,6 +1,6 @@
 import { BALANCE } from '../data/balance';
 import { MODULE_LIST, MODULES_BY_ID } from '../data/modules';
-import { WEAPON_LIST, WEAPONS_BY_ID } from '../data/weapons';
+import { WEAPON_LIST, WEAPONS_BY_ID, weaponColorForLevel } from '../data/weapons';
 import type {
   ModuleId,
   RunState,
@@ -146,6 +146,7 @@ function toOfferView(run: RunState, offer: InternalShopOffer): ShopOfferView {
       canAfford: !offer.sold && run.coins >= offer.price,
       icon: def.icon,
       level: offer.level,
+      color: weaponColorForLevel(def, offer.level ?? owned?.level ?? 1),
       detail: isUpgrade
         ? `升级至 Lv.${offer.level} · 伤害 +25% / 冷却 -6%`
         : `${def.role} · 伤害 ${def.baseDamage} · 冷却 ${def.cooldown}s`,

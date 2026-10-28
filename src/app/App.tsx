@@ -11,6 +11,7 @@ import type { JSX } from 'react';
 import './../styles/app.css';
 import { CHARACTERS_BY_ID } from '../game/data/characters';
 import { GameSession } from '../game/session';
+import { GameAudio } from '../game/audio';
 import type { SessionSnapshot } from '../game/types';
 import {
   SAVE_KEY,
@@ -54,6 +55,11 @@ export function App(): JSX.Element {
     sessionRef.current = createSession();
   }
   const session = sessionRef.current;
+  const audioRef = useRef<GameAudio | null>(null);
+  if (audioRef.current === null) {
+    audioRef.current = new GameAudio();
+  }
+  const audio = audioRef.current;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [screenState, dispatch] = useReducer(screenReducer, initialScreenState);
   const [settings, setSettings] = useState(readSettings);
@@ -71,6 +77,22 @@ export function App(): JSX.Element {
     if (canvas) session.attachCanvas(canvas);
     return () => session.destroy();
   }, [session]);
+
+  useEffect(() => {
+    audio.configure({ music: settings.music, sound: settings.sound });
+  }, [audio, settings.music, settings.sound]);
+
+  useEffect(() => {
+    session.setAudioListener((cue) => audio.play(cue));
+    return () => session.setAudioListener(null);
+  }, [audio, session]);
+
+  useEffect(() => {
+    audio.setScene(screenState.screen === 'battle' ? 'battle' : 'menu');
+    audio.setPaused(screenState.screen === 'battle' && snapshot.paused);
+  }, [audio, screenState.screen, snapshot.paused]);
+
+  useEffect(() => () => audio.dispose(), [audio]);
 
   const refreshSave = useCallback(() => {
     setSaveStatus(readSaveStatus());
@@ -241,11 +263,13 @@ export function App(): JSX.Element {
         <HomeScreen
           hasSave={save !== null}
           saveSummary={saveSummary}
+          musicEnabled={settings.music}
           soundEnabled={settings.sound}
           shakeEnabled={settings.shake}
           showIntroOnMount={!introSeen}
           onStart={handleStartMission}
           onContinue={handleContinue}
+          onMusicChange={(music) => updateSettings({ music })}
           onSoundChange={(sound) => updateSettings({ sound })}
           onShakeChange={(shake) => updateSettings({ shake })}
           onIntroSeen={handleIntroSeen}
@@ -265,12 +289,14 @@ export function App(): JSX.Element {
       {screenState.screen === 'battle' ? (
         <BattleScreen
           snapshot={snapshot}
+          musicEnabled={settings.music}
           soundEnabled={settings.sound}
           shakeEnabled={settings.shake}
           onPause={() => session.pause()}
           onResume={() => session.resume()}
           onRestart={handleRestart}
           onHome={handleBackHome}
+          onMusicChange={(music) => updateSettings({ music })}
           onSoundChange={(sound) => updateSettings({ sound })}
           onShakeChange={(shake) => updateSettings({ shake })}
         />
@@ -327,7 +353,7 @@ function DebugOverlay({ snapshot }: { snapshot: SessionSnapshot }): JSX.Element 
       <span>WAVE {snapshot.debug.wave}</span>
       <span>ENEMY {snapshot.debug.enemies}</span>
       <span>BULLET {snapshot.debug.playerProjectiles}/{snapshot.debug.enemyProjectiles}</span>
-      <span>BUDGET {snapshot.debug.spawnBudget}</span>
+      <span>SPAWNS {snapshot.debug.spawnRemaining}</span>
       <span>SEED {snapshot.debug.seed}</span>
       <span>[?debug=1]</span>
     </aside>

@@ -19,6 +19,7 @@ export type IconName =
   | 'refresh'
   | 'shield'
   | 'spark'
+  | 'trophy'
   | 'volume-off'
   | 'volume-on'
   | 'warning';
@@ -160,6 +161,14 @@ function renderPath(name: IconName) {
         <>
           <path d="M12 2v5M12 17v5M2 12h5M17 12h5" />
           <path d="m4.9 4.9 3.5 3.5M15.6 15.6l3.5 3.5M19.1 4.9l-3.5 3.5M8.4 15.6l-3.5 3.5" />
+        </>
+      );
+    case 'trophy':
+      return (
+        <>
+          <path d="M8 4h8v4.5a4 4 0 0 1-8 0V4Z" />
+          <path d="M8 5.5H5.5a3 3 0 0 0 3 4.5H9M16 5.5h2.5a3 3 0 0 1-3 4.5H15" />
+          <path d="M12 12.5V16M9 20h6M10 16h4v4h-4z" />
         </>
       );
     case 'volume-off':

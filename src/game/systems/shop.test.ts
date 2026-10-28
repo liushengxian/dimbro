@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createRng } from '../core/rng';
 import { BALANCE } from '../data/balance';
-import { WEAPONS_BY_ID } from '../data/weapons';
+import { WEAPONS_BY_ID, weaponColorForLevel } from '../data/weapons';
 import { createRun } from './progression';
-import { generateShopOffers, nextRefreshCost, weaponSellRefund } from './shop';
+import {
+  buildShopView,
+  generateShopOffers,
+  nextRefreshCost,
+  weaponSellRefund,
+} from './shop';
 
 describe('shop generation', () => {
   it('guarantees a weapon while slots are open and never duplicates an offer', () => {
@@ -66,5 +71,37 @@ describe('shop generation', () => {
     expect(weaponSellRefund({ id: 'pulseNailer', level: 2, paid: 43 })).toBe(21);
     expect(nextRefreshCost(5)).toBe(9);
     expect(nextRefreshCost(9)).toBe(13);
+  });
+
+  it('previews the purchased tier color on weapon offers', () => {
+    const run = createRun('sunsetNeedle', 1);
+    const view = buildShopView(
+      run,
+      [
+        {
+          id: 'offer-0-weapon-pulseNailer',
+          kind: 'weapon',
+          refId: 'pulseNailer',
+          price: 22,
+          sold: false,
+          level: 2,
+        },
+        {
+          id: 'offer-1-weapon-railSpike',
+          kind: 'weapon',
+          refId: 'railSpike',
+          price: 36,
+          sold: false,
+          level: 1,
+        },
+      ],
+      5,
+      null,
+    );
+
+    expect(view.offers[0]?.color).toBe(
+      weaponColorForLevel(WEAPONS_BY_ID.pulseNailer, 2),
+    );
+    expect(view.offers[1]?.color).toBe(WEAPONS_BY_ID.railSpike.color);
   });
 });

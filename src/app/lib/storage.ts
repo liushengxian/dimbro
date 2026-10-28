@@ -26,7 +26,14 @@ export const SAVE_KEY = 'dimbro.save.v1';
 export const SETTINGS_KEY = 'dimbro.settings.v1';
 export const INTRO_KEY = 'dimbro.intro.v1';
 
-const DEFAULT_SETTINGS: Readonly<Settings> = { sound: true, shake: true };
+const DEFAULT_SETTINGS: Readonly<Settings> = {
+  music: false,
+  sound: false,
+  shake: true,
+};
+
+/** 基础 HP 下调后，允许旧存档最多高出新上限 15 点并夹到上限，避免旧档直接失效。 */
+const LEGACY_HP_SLACK = 15;
 
 function getStorage(): Storage | null {
   try {
@@ -167,6 +174,9 @@ function parseRun(value: unknown): RunState | null {
   const coins = value.coins;
   if (!isNonNegativeInteger(coins)) return null;
 
+  const coinRemainder = value.coinRemainder === undefined ? 0 : value.coinRemainder;
+  if (!isFiniteNumber(coinRemainder) || coinRemainder < 0 || coinRemainder >= 1) return null;
+
   const shields = value.shields;
   if (!isIntegerInRange(shields, 0, BALANCE.simonMaxShields)) return null;
 
@@ -190,6 +200,7 @@ function parseRun(value: unknown): RunState | null {
     characterId,
     wave,
     coins,
+    coinRemainder,
     currentHp,
     shields,
     upgrades,
@@ -199,8 +210,10 @@ function parseRun(value: unknown): RunState | null {
   };
 
   // 当前生命不能超过由角色 + 升级 + 模块推导出的上限。
+  // 旧存档可能仍带着下调前的基础 HP，允许 10 点余量并夹到新上限。
   const maxHp = computePlayerStats(run).maxHp;
-  if (currentHp > maxHp) return null;
+  if (currentHp > maxHp + LEGACY_HP_SLACK) return null;
+  run.currentHp = Math.min(currentHp, maxHp);
 
   return run;
 }
@@ -278,11 +291,26 @@ export function readSettings(): Settings {
     const parsed: unknown = JSON.parse(raw);
     if (
       isRecord(parsed) &&
+      parsed.version === 2 &&
+      typeof parsed.music === 'boolean' &&
+      typeof parsed.sound === 'boolean' &&
+      typeof parsed.shake === 'boolean'
+    ) {
+      return {
+        music: parsed.music,
+        sound: parsed.sound,
+        shake: parsed.shake,
+      };
+    }
+
+    // v1 只有音效与震屏；音乐作为新选项默认关闭，其他偏好继续保留。
+    if (
+      isRecord(parsed) &&
       parsed.version === 1 &&
       typeof parsed.sound === 'boolean' &&
       typeof parsed.shake === 'boolean'
     ) {
-      return { sound: parsed.sound, shake: parsed.shake };
+      return { music: false, sound: parsed.sound, shake: parsed.shake };
     }
   } catch {
     // 损坏的设置回退默认值。
@@ -296,7 +324,8 @@ export function writeSettings(settings: Settings): void {
   if (storage === null) return;
 
   const stored: StoredSettings = {
-    version: 1,
+    version: 2,
+    music: settings.music,
     sound: settings.sound,
     shake: settings.shake,
   };

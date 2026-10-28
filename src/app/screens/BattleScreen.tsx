@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import type { CSSProperties, JSX } from 'react';
 import { Button } from '../components/Button';
+import { GameIcon } from '../components/GameIcon';
 import { Icon } from '../components/Icon';
 import { ProgrammerAvatar } from '../components/ProgrammerAvatar';
 import { CHARACTERS_BY_ID } from '../../game/data/characters';
@@ -12,12 +13,14 @@ import '../../styles/battle.css';
 
 export interface BattleScreenProps {
   snapshot: SessionSnapshot;
+  musicEnabled: boolean;
   soundEnabled: boolean;
   shakeEnabled: boolean;
   onPause: () => void;
   onResume: () => void;
   onRestart: () => void;
   onHome: () => void;
+  onMusicChange: (v: boolean) => void;
   onSoundChange: (v: boolean) => void;
   onShakeChange: (v: boolean) => void;
 }
@@ -89,7 +92,7 @@ function passiveChips(
       {
         id: 'simonTooStrong',
         name: 'Simon太强了',
-        status: '伤害 +20%',
+        status: '伤害 +50%',
         active: true,
         tone: 'mint',
       },
@@ -116,12 +119,14 @@ function passiveChips(
 
 export function BattleScreen({
   snapshot,
+  musicEnabled,
   soundEnabled,
   shakeEnabled,
   onPause,
   onResume,
   onRestart,
   onHome,
+  onMusicChange,
   onSoundChange,
   onShakeChange,
 }: BattleScreenProps): JSX.Element {
@@ -386,19 +391,20 @@ export function BattleScreen({
                   key={`weapon-${weapon.id}-${index}`}
                   title={`${weapon.name} Lv.${level} · ${definition?.description ?? weapon.name}`}
                   role="group"
+                  style={{ '--ring-color': weapon.color } as CssVars}
                   aria-label={`${weapon.name} 等级 ${level}，${ready >= 100 ? '就绪' : `充能 ${ready}%`}`}
                 >
                   <div
                     className="battle-hud__weapon-ring"
-                    style={
-                      {
-                        '--ring-ready': `${ready}%`,
-                        '--ring-color': weapon.color,
-                      } as CssVars
-                    }
+                    style={{ '--ring-ready': `${ready}%` } as CssVars}
                     aria-hidden="true"
                   >
-                    <span>{weapon.icon}</span>
+                    <GameIcon
+                      name={weapon.id}
+                      size={18}
+                      strokeWidth={2}
+                      className="battle-hud__weapon-icon"
+                    />
                   </div>
                   <div className="battle-hud__weapon-copy">
                     <span className="battle-hud__weapon-name">{weapon.name}</span>
@@ -456,8 +462,10 @@ export function BattleScreen({
           onResume={onResume}
           onRestart={onRestart}
           onHome={onHome}
+          musicEnabled={musicEnabled}
           soundEnabled={soundEnabled}
           shakeEnabled={shakeEnabled}
+          onMusicChange={onMusicChange}
           onSoundChange={onSoundChange}
           onShakeChange={onShakeChange}
         />

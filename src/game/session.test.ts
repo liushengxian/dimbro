@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { readSave, SAVE_KEY } from '../app/lib/storage';
+import { WEAPONS_BY_ID, weaponColorForLevel } from './data/weapons';
 import { GameSession } from './session';
 import type { BattleWorld, PickupEntity } from './types';
 
@@ -7,6 +8,7 @@ interface SessionInternals {
   world: BattleWorld;
   run: NonNullable<ReturnType<GameSession['getSnapshot']>['run']>;
   step(dt: number): void;
+  publish(): void;
 }
 
 function internals(session: GameSession): SessionInternals {
@@ -136,6 +138,22 @@ describe('GameSession wave settlement', () => {
     expect(totalModules).toBe(1);
   });
 
+  it('exposes the upgraded weapon color to the battle HUD', () => {
+    const session = new GameSession();
+    session.startNewRun('sunsetNeedle');
+    const state = internals(session);
+    const weapon = state.run.weapons[0];
+    if (!weapon) throw new Error('missing starting weapon');
+    weapon.level = 2;
+    state.publish();
+
+    const hudWeapon = session.getSnapshot().weapons[0];
+    expect(hudWeapon?.level).toBe(2);
+    expect(hudWeapon?.color).toBe(
+      weaponColorForLevel(WEAPONS_BY_ID.pulseNailer, 2),
+    );
+  });
+
   it('can start and finish a boss wave through the session facade', () => {
     const session = new GameSession();
     session.startNewRun('sunsetNeedle');
@@ -178,5 +196,22 @@ describe('GameSession wave settlement', () => {
     expect(snapshot.phase).toBe('battle');
     expect(snapshot.run?.characterId).toBe('simon');
     expect(snapshot.wave).toBe(1);
+  });
+});
+
+describe('GameSession audio cues', () => {
+  it('forwards wave and pause events to the audio listener', () => {
+    const session = new GameSession();
+    const cues: string[] = [];
+    session.setAudioListener((cue) => cues.push(cue));
+
+    session.startNewRun('sunsetNeedle');
+    expect(cues).toContain('waveStart');
+
+    session.pause();
+    expect(cues).toContain('pause');
+
+    session.resume();
+    expect(cues).toContain('resume');
   });
 });

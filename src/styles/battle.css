@@ -681,13 +681,11 @@
   content: "";
 }
 
-.battle-hud__weapon-ring > span {
+.battle-hud__weapon-ring > .battle-hud__weapon-icon {
   position: relative;
   z-index: 1;
   color: var(--ring-color);
-  font-size: 0.85rem;
-  line-height: 1;
-  text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ring-color) 55%, transparent));
 }
 
 .battle-hud__weapon-copy {
@@ -719,8 +717,8 @@
 }
 
 .battle-hud__weapon-level i[data-on="true"] {
-  background: var(--amber);
-  box-shadow: 0 0 5px rgba(245, 165, 36, 0.8);
+  background: var(--ring-color, var(--amber));
+  box-shadow: 0 0 5px var(--ring-color, rgba(245, 165, 36, 0.8));
 }
 
 .battle-hud__weapon-empty {

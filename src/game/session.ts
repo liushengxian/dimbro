@@ -3,8 +3,9 @@ import { CHARACTERS_BY_ID } from './data/characters';
 import { MODULES_BY_ID } from './data/modules';
 import { UPGRADES_BY_ID } from './data/upgrades';
 import { WAVES_BY_ID } from './data/waves';
-import { WEAPONS_BY_ID } from './data/weapons';
+import { WEAPONS_BY_ID, weaponColorForLevel } from './data/weapons';
 import { createRng, type Rng } from './core/rng';
+import type { AudioCue } from './audio';
 import { clearSave, writeSave } from '../app/lib/storage';
 import type {
   BossHudState,
@@ -34,7 +35,7 @@ import {
   type BattleInput,
   type BattleOutcome,
 } from './systems/battle';
-import { applyMaxHpBonus, computePlayerStats, createRun } from './systems/progression';
+import { applyMaxHpBonus, awardCoins, computePlayerStats, createRun } from './systems/progression';
 import {
   buildShopView,
   generateShopOffers,
@@ -105,6 +106,7 @@ export class GameSession {
   private pendingOfferId: string | null = null;
   private waveSummary: WaveSummary | null = null;
   private result: ResultView | null = null;
+  private audioListener: ((cue: AudioCue) => void) | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -122,6 +124,10 @@ export class GameSession {
       this.listeners.delete(listener);
     };
   };
+
+  setAudioListener(listener: ((cue: AudioCue) => void) | null): void {
+    this.audioListener = listener;
+  }
 
   getSnapshot = (): SessionSnapshot => {
     if (this.snapshotCache !== null && this.snapshotVersion === this.version) {
@@ -177,6 +183,7 @@ export class GameSession {
       this.input = emptyInput();
       this.accumulator = 0;
     }
+    this.emitAudio(this.paused ? 'pause' : 'resume');
     this.publish();
   }
 
@@ -185,6 +192,7 @@ export class GameSession {
     this.paused = true;
     this.input = emptyInput();
     this.accumulator = 0;
+    this.emitAudio('pause');
     this.publish();
   }
 
@@ -193,6 +201,7 @@ export class GameSession {
     this.paused = false;
     this.accumulator = 0;
     this.lastTime = 0;
+    this.emitAudio('resume');
     this.publish();
   }
 
@@ -209,6 +218,7 @@ export class GameSession {
     if (!choice) return;
     applyUpgrade(this.run, id);
     this.upgradeChoices = [];
+    this.emitAudio('upgrade');
     this.openShop();
   }
 
@@ -217,6 +227,7 @@ export class GameSession {
     this.run.coins += BALANCE.skipUpgradeCoins;
     this.run.totals.coinsEarned += BALANCE.skipUpgradeCoins;
     this.upgradeChoices = [];
+    this.emitAudio('upgrade');
     this.openShop();
   }
 
@@ -225,12 +236,14 @@ export class GameSession {
       return { status: 'error', message: '商店尚未开启。' };
     }
     if (this.run.coins < this.refreshCost) {
+      this.emitAudio('deny');
       return { status: 'error', message: `金币不足，刷新需要 ${this.refreshCost}。` };
     }
     this.run.coins -= this.refreshCost;
     this.refreshCost = nextRefreshCost(this.refreshCost);
     this.shopOffers = generateShopOffers(this.run, this.rng);
     this.pendingOfferId = null;
+    this.emitAudio('purchase');
     this.publish();
     return { status: 'ok' };
   }
@@ -244,9 +257,11 @@ export class GameSession {
     }
     const offer = this.shopOffers.find((item) => item.id === offerId);
     if (!offer || offer.sold) {
+      this.emitAudio('deny');
       return { status: 'error', message: '该商品已经售出。' };
     }
     if (this.run.coins < offer.price) {
+      this.emitAudio('deny');
       return { status: 'error', message: `金币不足，需要 ${offer.price}。` };
     }
 
@@ -254,6 +269,7 @@ export class GameSession {
       const def = MODULES_BY_ID[offer.refId as ModuleId];
       const count = this.run.modules[def.id] ?? 0;
       if (count >= def.maxStacks) {
+        this.emitAudio('deny');
         return { status: 'error', message: '该模块已达到持有上限。' };
       }
       this.run.coins -= offer.price;
@@ -262,6 +278,7 @@ export class GameSession {
         applyMaxHpBonus(this.run, def.effect.heal ?? def.effect.value);
       }
       offer.sold = true;
+      this.emitAudio('purchase');
       this.publish();
       return { status: 'ok' };
     }
@@ -271,12 +288,14 @@ export class GameSession {
       const owned = this.run.weapons[ownedIndex];
       if (!owned) return { status: 'error', message: '武器数据异常。' };
       if (owned.level >= BALANCE.maxWeaponLevel) {
+        this.emitAudio('deny');
         return { status: 'error', message: '该武器已满级。' };
       }
       this.run.coins -= offer.price;
       owned.level += 1;
       owned.paid += offer.price;
       offer.sold = true;
+      this.emitAudio('purchase');
       this.publish();
       return { status: 'ok' };
     }
@@ -294,6 +313,7 @@ export class GameSession {
       paid: offer.price,
     });
     offer.sold = true;
+    this.emitAudio('purchase');
     this.publish();
     return { status: 'ok' };
   }
@@ -330,6 +350,7 @@ export class GameSession {
     };
     offer.sold = true;
     this.pendingOfferId = null;
+    this.emitAudio('purchase');
     this.publish();
   }
 
@@ -338,6 +359,7 @@ export class GameSession {
       return { status: 'error', message: '商店尚未开启。' };
     }
     if (this.run.weapons.length <= 1) {
+      this.emitAudio('deny');
       return { status: 'error', message: '至少保留一把武器。' };
     }
     const weapon = this.run.weapons[slotIndex];
@@ -345,6 +367,7 @@ export class GameSession {
     const refund = weaponSellRefund(weapon);
     this.run.weapons.splice(slotIndex, 1);
     this.run.coins += refund;
+    this.emitAudio('purchase');
     this.publish();
     return { status: 'ok' };
   }
@@ -449,6 +472,8 @@ export class GameSession {
     this.lastTime = 0;
     this.notifyAccumulator = 0;
     this.saveCurrent();
+    this.emitAudio('waveStart');
+    this.flushWorldAudio();
     this.publish();
     this.renderOnce();
   }
@@ -479,7 +504,7 @@ export class GameSession {
     let lost = 0;
     if (run.characterId === 'simon') {
       for (const pickup of world.pickups) {
-        const award = Math.max(1, Math.round(pickup.value * (1 + stats.coinPct)));
+        const award = awardCoins(run, pickup.value, stats.coinPct);
         repaired += award;
         run.coins += award;
         run.totals.coinsEarned += award;
@@ -517,6 +542,7 @@ export class GameSession {
     this.phase = 'waveClear';
     this.paused = false;
     this.input = emptyInput();
+    this.emitAudio('waveClear');
     this.publish();
     this.renderOnce();
   }
@@ -541,6 +567,7 @@ export class GameSession {
     this.paused = false;
     this.input = emptyInput();
     this.result = this.buildResult(victory);
+    this.emitAudio(victory ? 'victory' : 'defeat');
     clearSave();
     this.publish();
     this.renderOnce();
@@ -610,7 +637,7 @@ export class GameSession {
             level: weapon.level,
             cooldown: runtime?.cooldown ?? 0,
             cooldownTotal: runtime?.cooldownTotal ?? 1,
-            color: def.color,
+            color: weaponColorForLevel(def, weapon.level),
           };
         })
       : [];
@@ -676,7 +703,7 @@ export class GameSession {
         playerProjectiles: world?.playerProjectiles.length ?? 0,
         enemyProjectiles: world?.enemyProjectiles.length ?? 0,
         pickups: world?.pickups.length ?? 0,
-        spawnBudget: world?.spawnBudget ?? 0,
+        spawnRemaining: world?.spawnRemaining ?? 0,
         seed: run?.seed ?? 0,
         wave: run?.wave ?? 0,
         phase: this.phase,
@@ -696,6 +723,22 @@ export class GameSession {
     this.version += 1;
     this.snapshotCache = null;
     for (const listener of this.listeners) listener();
+  }
+
+  private emitAudio(cue: AudioCue): void {
+    if (this.audioListener === null) return;
+    try {
+      this.audioListener(cue);
+    } catch {
+      // 音频故障不应中断战斗循环。
+    }
+  }
+
+  private flushWorldAudio(): void {
+    const world = this.world;
+    if (world === null || world.audioCues.length === 0) return;
+    const cues = world.audioCues.splice(0, world.audioCues.length);
+    for (const cue of cues) this.emitAudio(cue);
   }
 
   private loop = (time: number): void => {
@@ -746,6 +789,7 @@ export class GameSession {
       this.input,
       this.rng,
     );
+    this.flushWorldAudio();
     if (outcome === 'waveClear') this.finishWave();
     else if (outcome === 'victory') this.finishRun(true);
     else if (outcome === 'defeat') this.finishRun(false);

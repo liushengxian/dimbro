@@ -91,6 +91,9 @@ function applyEffect(stats: PlayerStats, effect: StatEffect, stacks: number): vo
     case 'knockbackPct':
       stats.knockbackPct += amount;
       break;
+    case 'damageTakenPct':
+      stats.damageTakenPct += amount;
+      break;
     case 'cooldownMul':
       // 备用弹仓：每层 0.96，多层相乘。
       stats.cooldownMul *= Math.pow(effect.value, stacks);
@@ -104,6 +107,7 @@ function applyUpgrades(stats: PlayerStats, run: RunState): void {
     const def = UPGRADES_BY_ID[id as UpgradeId];
     if (def === undefined) continue;
     applyEffect(stats, def.effect, stacks);
+    if (def.penalty !== undefined) applyEffect(stats, def.penalty, stacks);
   }
 }
 
@@ -133,6 +137,7 @@ export function baseStats(characterId: PlayableCharacterId): PlayerStats {
     coinPct: BALANCE.playerBase.coinPct,
     knockbackPct: BALANCE.playerBase.knockbackPct,
     regen: BALANCE.playerBase.regen,
+    damageTakenPct: 0,
     cooldownMul: BALANCE.playerBase.cooldownMul,
   };
 }
@@ -182,6 +187,7 @@ export function createRun(characterId: PlayableCharacterId, seed: number): RunSt
     characterId,
     wave: 1,
     coins: BALANCE.startingCoins,
+    coinRemainder: 0,
     currentHp: 1,
     shields: 0,
     upgrades: {},
@@ -252,6 +258,17 @@ export function mitigateArmor(rawDamage: number, armor: number): number {
   const safeArmor = Number.isFinite(armor) ? Math.max(0, armor) : 0;
   const mitigated = (rawDamage * BALANCE.armorK) / (BALANCE.armorK + safeArmor);
   return Math.max(BALANCE.minDamage, mitigated);
+}
+
+/**
+ * 结算一次金币掉落。保留小数余量，避免 +15% / +30% 在 1 金币掉落上
+ * 被 Math.round 吃掉；长期期望值仍然正确。
+ */
+export function awardCoins(run: RunState, baseValue: number, coinPct: number): number {
+  const raw = baseValue * (1 + coinPct) + run.coinRemainder;
+  const awarded = Math.max(1, Math.floor(raw));
+  run.coinRemainder = Math.max(0, raw - awarded);
+  return awarded;
 }
 
 /**

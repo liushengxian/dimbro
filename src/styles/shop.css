@@ -213,13 +213,19 @@
   left: 0;
   width: 2.6rem;
   height: 2px;
-  background: var(--amber);
-  box-shadow: 0 0 14px rgba(245, 165, 36, 0.55);
+  background: var(--weapon-color, var(--amber));
+  box-shadow: 0 0 14px var(--weapon-color, rgba(245, 165, 36, 0.55));
 }
 
 .shop-offer[data-kind="module"]::before {
   background: var(--mint);
   box-shadow: 0 0 14px rgba(103, 232, 199, 0.48);
+}
+
+.shop-offer[data-kind="weapon"] .shop-offer__kind {
+  border-color: currentColor;
+  background: rgba(4, 12, 10, 0.72);
+  color: var(--weapon-color, var(--amber-bright));
 }
 
 .shop-offer:hover:not(:disabled),
@@ -302,15 +308,20 @@
 
 .shop-offer__icon {
   color: var(--amber-bright);
-  font-family: var(--font-mono);
-  font-size: 1.85rem;
   line-height: 1;
-  text-shadow: 0 0 16px rgba(245, 165, 36, 0.28);
+}
+
+.shop-offer__icon svg {
+  display: block;
+  filter: drop-shadow(0 0 7px color-mix(in srgb, currentColor 38%, transparent));
 }
 
 .shop-offer[data-kind="module"] .shop-offer__icon {
   color: var(--mint-bright);
-  text-shadow: 0 0 16px rgba(103, 232, 199, 0.24);
+}
+
+.shop-offer[data-kind="weapon"] .shop-offer__icon {
+  color: var(--weapon-color, var(--amber-bright));
 }
 
 .shop-offer__name-row {
@@ -334,7 +345,7 @@
 
 .shop-offer__level {
   flex: none;
-  color: var(--amber);
+  color: var(--weapon-color, var(--amber));
   font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
@@ -458,7 +469,7 @@
 .shop-screen__lower {
   display: grid;
   flex: 1;
-  grid-template-columns: minmax(0, 1.62fr) minmax(16rem, 0.72fr);
+  grid-template-columns: minmax(0, 2.2fr) minmax(15rem, 0.6fr);
   gap: clamp(0.5rem, 1vw, 0.8rem);
   min-height: 0;
 }
@@ -502,13 +513,17 @@
   position: absolute;
   top: 50%;
   right: 0.55rem;
-  color: var(--amber-bright);
-  font-family: var(--font-mono);
-  font-size: clamp(2.4rem, 4.2vw, 4.2rem);
-  line-height: 1;
-  opacity: 0.08;
+  color: var(--weapon-color, var(--amber-bright));
+  opacity: 0.12;
   transform: translateY(-46%);
   pointer-events: none;
+}
+
+.shop-slot__glyph svg {
+  display: block;
+  width: clamp(2.4rem, 4.2vw, 4.2rem);
+  height: auto;
+  filter: drop-shadow(0 0 18px var(--weapon-color, var(--amber-bright)));
 }
 
 .shop-slot__index {
@@ -533,7 +548,7 @@
 
 .shop-slot__name em {
   flex: none;
-  color: var(--amber);
+  color: var(--weapon-color, var(--amber));
   font-family: var(--font-mono);
   font-size: 0.5625rem;
   font-style: normal;
@@ -708,7 +723,7 @@
 }
 
 .shop-screen__confirm-name em {
-  color: var(--amber);
+  color: var(--weapon-color, var(--amber));
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   font-style: normal;
@@ -835,7 +850,7 @@
 }
 
 .shop-screen__replace-name em {
-  color: var(--amber);
+  color: var(--weapon-color, var(--amber));
   font-family: var(--font-mono);
   font-size: 0.5625rem;
   font-style: normal;

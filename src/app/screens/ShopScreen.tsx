@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
-import type { JSX } from 'react';
+import type { CSSProperties, JSX } from 'react';
 import { Button } from '../components/Button';
+import { GameIcon } from '../components/GameIcon';
 import { Icon } from '../components/Icon';
 import { Modal } from '../components/Modal';
-import { WEAPONS_BY_ID } from '../../game/data/weapons';
+import { WEAPONS_BY_ID, weaponColorForLevel } from '../../game/data/weapons';
 import type { PurchaseResult, SessionSnapshot, ShopOfferView } from '../../game/types';
 import { cn } from '../lib/cn';
 import '../../styles/shop.css';
+
+type CssVars = CSSProperties & Record<`--${string}`, string | number>;
 
 export interface ShopScreenProps {
   snapshot: SessionSnapshot;
@@ -161,8 +164,15 @@ export function ShopScreen({
                   type="button"
                   className="shop-offer"
                   data-kind={offer.kind}
+                  data-icon={offer.refId}
+                  data-level={offer.kind === 'weapon' ? offer.level : undefined}
                   data-sold={sold || undefined}
                   data-affordable={affordable ? 'true' : 'false'}
+                  style={
+                    offer.kind === 'weapon' && offer.color
+                      ? ({ '--weapon-color': offer.color } as CssVars)
+                      : undefined
+                  }
                   disabled={disabled}
                   aria-label={`${offer.kind === 'weapon' ? '武器' : '模块'} ${offer.name}，${
                     offer.price
@@ -175,9 +185,16 @@ export function ShopScreen({
                       {offer.kind === 'weapon' ? '武器' : '模块'}
                     </span>
                     <span className="shop-offer__icon" aria-hidden="true">
-                      {offer.icon}
+                      <GameIcon name={offer.refId} size={36} strokeWidth={2} />
                     </span>
                   </span>
+
+                  <GameIcon
+                    name={offer.refId}
+                    size={74}
+                    strokeWidth={1.3}
+                    className="shop-offer__watermark"
+                  />
 
                   <span className="shop-offer__name-row">
                     <span className="shop-offer__name">{offer.name}</span>
@@ -237,12 +254,18 @@ export function ShopScreen({
 
                 const def = WEAPONS_BY_ID[weapon.id];
                 const refund = sellRefund(weapon.paid);
+                const slotColor = weaponColorForLevel(def, weapon.level);
 
                 return (
-                  <div key={`${weapon.id}-${index}`} className="shop-slot">
+                  <div
+                    key={`${weapon.id}-${index}`}
+                    className="shop-slot"
+                    data-level={weapon.level}
+                    style={{ '--weapon-color': slotColor } as CssVars}
+                  >
                     <span className="shop-slot__index">SLOT 0{index + 1}</span>
                     <span className="shop-slot__glyph" aria-hidden="true">
-                      {def.icon}
+                      <GameIcon name={def.id} size={72} strokeWidth={1.3} />
                     </span>
                     <span className="shop-slot__name">
                       {def.name}
@@ -349,7 +372,14 @@ export function ShopScreen({
         </p>
 
         {sellWeapon && sellDef ? (
-          <div className="shop-screen__confirm-card">
+          <div
+            className="shop-screen__confirm-card"
+            style={
+              {
+                '--weapon-color': weaponColorForLevel(sellDef, sellWeapon.level),
+              } as CssVars
+            }
+          >
             <span className="shop-screen__confirm-name">
               {sellDef.name}
               <em>Lv.{sellWeapon.level}</em>
@@ -424,6 +454,12 @@ export function ShopScreen({
                 key={`${weapon.id}-${index}`}
                 type="button"
                 className="shop-screen__replace-slot"
+                data-level={weapon.level}
+                style={
+                  {
+                    '--weapon-color': weaponColorForLevel(def, weapon.level),
+                  } as CssVars
+                }
                 aria-label={`用新装备替换 ${def.name}，返还 ${refund} 金币`}
                 onClick={() => onReplace(index)}
               >

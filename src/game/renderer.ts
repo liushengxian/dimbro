@@ -1,7 +1,7 @@
 import { BALANCE } from './data/balance';
 import { CHARACTERS_BY_ID } from './data/characters';
 import { ENEMIES_BY_ID } from './data/enemies';
-import { WEAPONS_BY_ID } from './data/weapons';
+import { WEAPONS_BY_ID, weaponColorForLevel } from './data/weapons';
 import type {
   BattleWorld,
   CharacterPalette,
@@ -35,6 +35,8 @@ const DANGER_BRIGHT = '#ff9a84';
 const SUNSET = '#ff6b4a';
 const GOLD = '#ffd166';
 const OUTLINE = '#06100d';
+const HULL = '#08120f';
+const HULL_SOFT = 'rgba(4, 9, 8, 0.76)';
 
 const SCENE_W = BALANCE.worldWidth ?? WORLD_W;
 const SCENE_H = BALANCE.worldHeight ?? WORLD_H;
@@ -173,16 +175,17 @@ function drawHealthBar(
   }
 }
 
-function weaponFor(run: RunState | null): WeaponDef | undefined {
+function weaponFor(run: RunState | null): { def: WeaponDef; level: number } | undefined {
   if (!run) return undefined;
   const first = run.weapons[0];
   if (first) {
     const found = WEAPONS_BY_ID[first.id];
-    if (found) return found;
+    if (found) return { def: found, level: first.level };
   }
   const character = CHARACTERS_BY_ID[run.characterId];
   if (!character) return undefined;
-  return WEAPONS_BY_ID[character.startingWeaponId];
+  const starting = WEAPONS_BY_ID[character.startingWeaponId];
+  return starting ? { def: starting, level: 1 } : undefined;
 }
 
 function paletteFor(run: RunState | null): Palette {
@@ -858,10 +861,28 @@ export class BattleRenderer {
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.34)';
+    const flying = enemy.defId === 'drone' || enemy.defId === 'overseer';
+    const shadowScale = enemy.boss ? 1.55 : flying ? 0.82 : 1.08;
+    const shadowDrop = enemy.boss ? radius * 0.72 : flying ? radius * 1.02 : radius * 0.54;
+    ctx.fillStyle = enemy.boss ? 'rgba(0, 0, 0, 0.48)' : 'rgba(0, 0, 0, 0.36)';
     ctx.beginPath();
-    ctx.ellipse(0, radius * 0.5, radius * 0.95, radius * 0.4, 0, 0, TAU);
+    ctx.ellipse(
+      0,
+      shadowDrop,
+      radius * shadowScale,
+      radius * (flying ? 0.26 : 0.4),
+      0,
+      0,
+      TAU,
+    );
     ctx.fill();
+
+    if (!flash) {
+      const auraColor = bossPhase ? DANGER : accent;
+      const auraRadius = radius * (enemy.boss ? 3 : enemy.elite ? 2.35 : 1.75);
+      const auraAlpha = enemy.boss ? 0.16 : enemy.elite ? 0.11 : 0.055;
+      this.drawGlow(ctx, 0, flying ? -radius * 0.12 : 0, auraRadius, auraColor, auraAlpha);
+    }
 
     if (enemy.burnTimer > 0) {
       ctx.save();
@@ -989,6 +1010,24 @@ export class BattleRenderer {
     ctx.restore();
   }
 
+  private drawEnemyBolt(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    size: number,
+    color = HULL,
+  ): void {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = Math.max(0.55, size * 0.34);
+    ctx.beginPath();
+    ctx.arc(x - size * 0.1, y - size * 0.1, size * 0.62, Math.PI * 1.06, Math.PI * 1.78);
+    ctx.stroke();
+  }
+
   private drawBiter(
     ctx: CanvasRenderingContext2D,
     enemy: EnemyEntity,
@@ -997,32 +1036,227 @@ export class BattleRenderer {
     line: string,
     time: number,
   ): void {
+    const r = Math.max(6, radius);
+    const t = time + enemy.id * 0.37;
+    const flash = fill === INK;
+    const bob = Math.sin(t * 8) * r * 0.055;
+    const stride = time * 11.5 + enemy.id * 0.6;
+
     ctx.save();
     ctx.rotate(enemy.angle);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Segmented antennae sway behind the carapace.
+    for (const side of [-1, 1]) {
+      const sway = Math.sin(t * 5.4 + side) * r * 0.08;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.5, side * r * 0.2);
+      ctx.quadraticCurveTo(-r * 0.96, side * r * 0.52, -r * 1.16, side * r * 0.82 + sway);
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(2.6, r * 0.26);
+      ctx.stroke();
+      ctx.strokeStyle = line;
+      ctx.lineWidth = Math.max(1, r * 0.085);
+      ctx.globalAlpha = 0.85;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = flash ? '#ffffff' : line;
+      ctx.beginPath();
+      ctx.arc(-r * 1.16, side * r * 0.82 + sway, Math.max(1.3, r * 0.085), 0, TAU);
+      ctx.fill();
+    }
+
+    // Six jointed legs, each with its own alternating stride.
+    for (const side of [-1, 1]) {
+      for (let index = 0; index < 3; index += 1) {
+        const phase = stride + index * 2.15 + (side > 0 ? Math.PI : 0);
+        const hipX = r * (0.3 - index * 0.38);
+        const hipY = side * r * 0.3;
+        const swing = Math.sin(phase) * r * 0.22;
+        const lift = Math.cos(phase) * r * 0.07;
+        const kneeX = hipX - r * 0.24 + swing * 0.4;
+        const kneeY = side * (r * 0.72 + lift);
+        const footX = hipX - r * 0.06 + swing;
+        const footY = side * (r * 1.08 + lift * 0.45);
+        ctx.beginPath();
+        ctx.moveTo(hipX, hipY);
+        ctx.quadraticCurveTo(kneeX, kneeY, footX, footY);
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = Math.max(2.4, r * 0.22);
+        ctx.stroke();
+        ctx.strokeStyle = line;
+        ctx.lineWidth = Math.max(0.9, r * 0.075);
+        ctx.globalAlpha = 0.8;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = flash ? '#ffffff' : line;
+        ctx.beginPath();
+        ctx.arc(kneeX, kneeY, Math.max(1.1, r * 0.085), 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(242, 234, 216, 0.48)';
+        ctx.lineWidth = Math.max(0.8, r * 0.05);
+        ctx.beginPath();
+        ctx.moveTo(footX, footY);
+        ctx.lineTo(footX - r * 0.11, footY + side * r * 0.09);
+        ctx.stroke();
+      }
+    }
+
+    ctx.save();
+    ctx.translate(0, bob);
+
+    // Layered abdomen shell with exposed seams.
     ctx.beginPath();
-    ctx.moveTo(radius * 1.1, 0);
-    ctx.lineTo(-radius * 0.72, radius * 0.82);
-    ctx.lineTo(-radius * 0.38, 0);
-    ctx.lineTo(-radius * 0.72, -radius * 0.82);
+    ctx.moveTo(r * 0.48, -r * 0.34);
+    ctx.bezierCurveTo(r * 0.2, -r * 0.82, -r * 0.5, -r * 0.9, -r * 0.98, -r * 0.34);
+    ctx.bezierCurveTo(-r * 1.16, -r * 0.1, -r * 1.16, r * 0.1, -r * 0.98, r * 0.34);
+    ctx.bezierCurveTo(-r * 0.5, r * 0.9, r * 0.2, r * 0.82, r * 0.48, r * 0.34);
+    ctx.quadraticCurveTo(r * 0.62, 0, r * 0.48, -r * 0.34);
     ctx.closePath();
     ctx.fillStyle = fill;
     ctx.fill();
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = Math.max(3, r * 0.3);
     ctx.stroke();
     ctx.strokeStyle = line;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(1.2, r * 0.11);
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(4, 9, 8, 0.7)';
-    ctx.lineWidth = 1.5;
+
+    // Dark inset panels keep the silhouette from reading as a flat triangle.
     ctx.beginPath();
-    ctx.moveTo(radius * 0.12, 0);
-    ctx.lineTo(-radius * 0.38, 0);
-    ctx.stroke();
-    ctx.fillStyle = line;
-    ctx.beginPath();
-    ctx.arc(radius * 0.26, 0, 2.2 + pulse(time, 8) * 0.7, 0, TAU);
+    ctx.moveTo(r * 0.24, -r * 0.48);
+    ctx.bezierCurveTo(-r * 0.08, -r * 0.66, -r * 0.62, -r * 0.58, -r * 0.8, -r * 0.16);
+    ctx.lineTo(-r * 0.8, r * 0.16);
+    ctx.bezierCurveTo(-r * 0.62, r * 0.58, -r * 0.08, r * 0.66, r * 0.24, r * 0.48);
+    ctx.closePath();
+    ctx.fillStyle = flash ? 'rgba(255,255,255,0.36)' : HULL_SOFT;
     ctx.fill();
+    ctx.strokeStyle = flash ? '#ffffff' : line;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = Math.max(0.8, r * 0.06);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Segmented plates and central spine.
+    ctx.strokeStyle = flash ? '#ffffff' : 'rgba(4, 9, 8, 0.82)';
+    ctx.lineWidth = Math.max(1.6, r * 0.13);
+    for (let index = 0; index < 3; index += 1) {
+      const x = r * (0.04 - index * 0.28);
+      ctx.beginPath();
+      ctx.moveTo(x, -r * 0.43);
+      ctx.quadraticCurveTo(x - r * 0.12, 0, x, r * 0.43);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = flash ? '#ffffff' : line;
+    ctx.lineWidth = Math.max(1, r * 0.075);
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.2, 0);
+    ctx.lineTo(-r * 0.72, 0);
+    ctx.stroke();
+
+    // Rear spikes and a warm exhaust slit.
+    for (const side of [-1, 1]) {
+      for (let index = 0; index < 2; index += 1) {
+        const x = -r * (0.5 + index * 0.24);
+        ctx.beginPath();
+        ctx.moveTo(x + r * 0.14, side * r * 0.5);
+        ctx.lineTo(x - r * 0.08, side * r * 0.78);
+        ctx.lineTo(x - r * 0.16, side * r * 0.48);
+        ctx.closePath();
+        ctx.fillStyle = flash ? '#ffffff' : line;
+        ctx.globalAlpha = 0.9;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.fillStyle = flash ? '#ffffff' : line;
+    ctx.globalAlpha = 0.46 + pulse(t, 5) * 0.28;
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.92, 0, r * 0.1, r * 0.22, 0, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Angular head with a bright sensor band.
+    ctx.beginPath();
+    ctx.moveTo(r * 0.28, -r * 0.42);
+    ctx.lineTo(r * 0.76, -r * 0.3);
+    ctx.lineTo(r * 0.94, 0);
+    ctx.lineTo(r * 0.76, r * 0.3);
+    ctx.lineTo(r * 0.28, r * 0.42);
+    ctx.lineTo(r * 0.12, 0);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(2.6, r * 0.24);
+    ctx.stroke();
+    ctx.strokeStyle = line;
+    ctx.lineWidth = Math.max(0.9, r * 0.08);
+    ctx.stroke();
+
+    ctx.beginPath();
+    roundRect(ctx, r * 0.58, -r * 0.2, r * 0.3, r * 0.4, r * 0.1);
+    ctx.fillStyle = flash ? 'rgba(255,255,255,0.9)' : HULL_SOFT;
+    ctx.fill();
+    ctx.strokeStyle = flash ? '#ffffff' : line;
+    ctx.globalAlpha = 0.8;
+    ctx.lineWidth = Math.max(0.8, r * 0.055);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = flash ? '#ffffff' : line;
+      ctx.beginPath();
+      ctx.ellipse(
+        r * 0.76,
+        side * r * 0.1,
+        Math.max(1, r * 0.075),
+        Math.max(0.65, r * 0.042),
+        0,
+        0,
+        TAU,
+      );
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+      ctx.beginPath();
+      ctx.arc(r * 0.785, side * r * 0.1 - r * 0.02, Math.max(0.4, r * 0.022), 0, TAU);
+      ctx.fill();
+    }
+    ctx.strokeStyle = flash ? '#ffffff' : 'rgba(242, 234, 216, 0.46)';
+    ctx.lineWidth = Math.max(0.7, r * 0.045);
+    ctx.beginPath();
+    ctx.moveTo(r * 0.91, -r * 0.11);
+    ctx.lineTo(r * 0.91, r * 0.11);
+    ctx.stroke();
+
+    ctx.fillStyle = flash ? 'rgba(255,255,255,0.48)' : line;
+    ctx.globalAlpha = 0.14;
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.4, -r * 0.02, r * 0.36, r * 0.22, -0.16, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Mandibles open and close while the bug scuttles.
+    const bite = r * (0.16 + Math.sin(t * 7.2) * 0.06);
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(r * 0.72, side * r * 0.2);
+      ctx.quadraticCurveTo(r * 1.04, side * (r * 0.24 + bite), r * 1.24, side * (r * 0.52 + bite));
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(2, r * 0.18);
+      ctx.stroke();
+      ctx.strokeStyle = line;
+      ctx.lineWidth = Math.max(0.9, r * 0.06);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(r * 1.24, side * (r * 0.52 + bite));
+      ctx.lineTo(r * 1.31, side * (r * 0.42 + bite));
+      ctx.strokeStyle = 'rgba(242, 234, 216, 0.62)';
+      ctx.lineWidth = Math.max(0.8, r * 0.045);
+      ctx.stroke();
+    }
+
+    ctx.restore();
     ctx.restore();
   }
 
@@ -1034,34 +1268,184 @@ export class BattleRenderer {
     line: string,
     time: number,
   ): void {
+    const r = Math.max(6, radius);
+    const t = time + enemy.id * 0.43;
+    const flash = fill === INK;
+    const hover = Math.sin(t * 5.2) * r * 0.12;
+    const rotors = [
+      { x: r * 0.94, y: -r * 0.78, spin: time * 17 + 0.4 },
+      { x: r * 0.94, y: r * 0.78, spin: -time * 15.5 + 1.9 },
+      { x: -r * 0.86, y: -r * 0.8, spin: time * 16.2 + 2.8 },
+      { x: -r * 0.86, y: r * 0.8, spin: -time * 18 + 4.1 },
+    ];
+
     ctx.save();
-    ctx.rotate(time * 1.8 + enemy.id);
+    ctx.rotate(enemy.angle);
+    ctx.translate(0, hover);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Outrigger arms and spinning rotors form the drone's cross silhouette.
+    for (let index = 0; index < rotors.length; index += 1) {
+      const rotor = rotors[index]!;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.08, 0);
+      ctx.lineTo(rotor.x * 0.78, rotor.y * 0.78);
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(2.6, r * 0.28);
+      ctx.stroke();
+      ctx.strokeStyle = line;
+      ctx.globalAlpha = 0.72;
+      ctx.lineWidth = Math.max(0.8, r * 0.07);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = flash ? '#ffffff' : HULL_SOFT;
+      ctx.beginPath();
+      ctx.arc(rotor.x, rotor.y, r * 0.3, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = flash ? '#ffffff' : line;
+      ctx.lineWidth = Math.max(0.8, r * 0.06);
+      ctx.stroke();
+
+      const rotorR = r * 0.46;
+      ctx.save();
+      ctx.translate(rotor.x, rotor.y);
+      ctx.globalAlpha = 0.14;
+      ctx.fillStyle = line;
+      ctx.beginPath();
+      ctx.arc(0, 0, rotorR, 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = line;
+      ctx.lineWidth = Math.max(0.8, r * 0.055);
+      ctx.beginPath();
+      ctx.arc(0, 0, rotorR, 0.2, 1.6);
+      ctx.stroke();
+      ctx.globalAlpha = 0.42;
+      ctx.rotate(rotor.spin);
+      for (let blade = 0; blade < 2; blade += 1) {
+        ctx.beginPath();
+        ctx.moveTo(-rotorR * 0.82, 0);
+        ctx.lineTo(rotorR * 0.82, 0);
+        ctx.stroke();
+        ctx.rotate(Math.PI);
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = flash ? '#ffffff' : line;
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(1.1, r * 0.075), 0, TAU);
+      ctx.fill();
+      ctx.restore();
+
+      if (index === 0 || index === 1) {
+        ctx.fillStyle = flash ? '#ffffff' : 'rgba(242, 234, 216, 0.42)';
+        ctx.beginPath();
+        ctx.arc(rotor.x, rotor.y, Math.max(0.7, r * 0.04), 0, TAU);
+        ctx.fill();
+      }
+    }
+
+    // Rear antenna with a blinking navigation light.
+    const blink = 0.4 + pulse(t, 4.5) * 0.6;
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(1.6, r * 0.16);
     ctx.beginPath();
-    ctx.moveTo(0, -radius);
-    ctx.lineTo(radius * 0.86, 0);
-    ctx.lineTo(0, radius);
-    ctx.lineTo(-radius * 0.86, 0);
+    ctx.moveTo(-r * 0.54, 0);
+    ctx.quadraticCurveTo(-r * 0.76, -r * 0.38, -r * 0.96, -r * 0.66);
+    ctx.stroke();
+    ctx.strokeStyle = line;
+    ctx.lineWidth = Math.max(0.7, r * 0.05);
+    ctx.globalAlpha = 0.7;
+    ctx.stroke();
+    ctx.globalAlpha = blink;
+    ctx.fillStyle = flash ? '#ffffff' : line;
+    ctx.beginPath();
+    ctx.arc(-r * 0.96, -r * 0.66, Math.max(1, r * 0.075), 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Main armored fuselage.
+    ctx.beginPath();
+    ctx.moveTo(r * 0.98, 0);
+    ctx.lineTo(r * 0.38, -r * 0.4);
+    ctx.lineTo(-r * 0.46, -r * 0.5);
+    ctx.lineTo(-r * 0.82, 0);
+    ctx.lineTo(-r * 0.46, r * 0.5);
+    ctx.lineTo(r * 0.38, r * 0.4);
     ctx.closePath();
     ctx.fillStyle = fill;
     ctx.fill();
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = Math.max(3, r * 0.3);
     ctx.stroke();
     ctx.strokeStyle = line;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(1, r * 0.085);
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(242, 234, 216, 0.4)';
-    ctx.lineWidth = 1.5;
+
+    // Dark center spine and side plates.
     ctx.beginPath();
-    ctx.moveTo(-radius * 0.35, 0);
-    ctx.lineTo(radius * 0.35, 0);
-    ctx.moveTo(0, -radius * 0.35);
-    ctx.lineTo(0, radius * 0.35);
+    ctx.moveTo(r * 0.54, 0);
+    ctx.lineTo(r * 0.2, -r * 0.24);
+    ctx.lineTo(-r * 0.58, -r * 0.22);
+    ctx.lineTo(-r * 0.68, 0);
+    ctx.lineTo(-r * 0.58, r * 0.22);
+    ctx.lineTo(r * 0.2, r * 0.24);
+    ctx.closePath();
+    ctx.fillStyle = flash ? 'rgba(255,255,255,0.34)' : HULL_SOFT;
+    ctx.fill();
+    ctx.strokeStyle = flash ? '#ffffff' : line;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = Math.max(0.7, r * 0.045);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = flash ? '#ffffff' : 'rgba(242, 234, 216, 0.32)';
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.05, side * r * 0.3);
+      ctx.lineTo(r * 0.3, side * r * 0.2);
+      ctx.lineTo(r * 0.07, side * r * 0.42);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Sensor eye and underslung twin barrels.
+    ctx.fillStyle = flash ? '#ffffff' : HULL_SOFT;
+    ctx.beginPath();
+    ctx.ellipse(r * 0.5, 0, r * 0.22, r * 0.18, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = flash ? '#ffffff' : 'rgba(4, 9, 8, 0.9)';
+    ctx.lineWidth = Math.max(1.2, r * 0.1);
     ctx.stroke();
     ctx.fillStyle = line;
     ctx.beginPath();
-    ctx.arc(0, 0, 2.4, 0, TAU);
+    ctx.arc(r * 0.56, 0, Math.max(1.5, r * 0.095), 0, TAU);
     ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.82)';
+    ctx.beginPath();
+    ctx.arc(r * 0.59, -r * 0.025, Math.max(0.6, r * 0.035), 0, TAU);
+    ctx.fill();
+
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = flash ? '#ffffff' : HULL;
+      roundRect(ctx, r * 0.35, side * r * 0.22 - r * 0.055, r * 0.65, r * 0.11, r * 0.04);
+      ctx.fill();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(1, r * 0.08);
+      ctx.stroke();
+      ctx.fillStyle = line;
+      ctx.fillRect(r * 0.88, side * r * 0.22 - r * 0.038, r * 0.1, r * 0.076);
+    }
+
+    ctx.fillStyle = flash ? '#ffffff' : 'rgba(255, 255, 255, 0.16)';
+    ctx.beginPath();
+    ctx.moveTo(r * 0.3, -r * 0.07);
+    ctx.lineTo(-r * 0.45, -r * 0.16);
+    ctx.lineTo(-r * 0.5, -r * 0.03);
+    ctx.lineTo(r * 0.25, r * 0.03);
+    ctx.closePath();
+    ctx.fill();
+
     ctx.restore();
   }
 
@@ -1073,39 +1457,274 @@ export class BattleRenderer {
     line: string,
     time: number,
   ): void {
+    const r = Math.max(9, radius);
+    const flash = fill === INK;
     const telegraph = enemy.mode === 'telegraph';
+    const dashing = enemy.mode === 'dash';
+    const stunned = enemy.mode === 'stunned';
+    const rumble = telegraph
+      ? Math.sin(time * 95) * r * 0.075
+      : dashing
+        ? Math.sin(time * 40) * r * 0.025
+        : 0;
+
     ctx.save();
     ctx.rotate(enemy.angle);
-    roundRect(ctx, -radius * 0.9, -radius * 0.82, radius * 1.8, radius * 1.64, 3);
+    ctx.translate(rumble, Math.cos(time * 77) * (telegraph ? r * 0.018 : 0));
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Twin treads with animated cleats.
+    for (const side of [-1, 1]) {
+      const trackY = side * r * 0.64;
+      roundRect(ctx, -r * 0.94, trackY - r * 0.18, r * 1.78, r * 0.36, r * 0.17);
+      ctx.fillStyle = HULL;
+      ctx.fill();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(2.2, r * 0.2);
+      ctx.stroke();
+      ctx.strokeStyle = flash ? '#ffffff' : line;
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = Math.max(0.8, r * 0.055);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      const cleatOffset = (time * (dashing ? 70 : telegraph ? 16 : 26)) % (r * 0.5);
+      ctx.strokeStyle = flash ? '#ffffff' : 'rgba(242, 234, 216, 0.32)';
+      ctx.lineWidth = Math.max(0.8, r * 0.045);
+      for (let index = 0; index < 4; index += 1) {
+        const x = -r * 0.76 + ((index * r * 0.5 + cleatOffset) % (r * 1.52));
+        ctx.beginPath();
+        ctx.moveTo(x, trackY - r * 0.12);
+        ctx.lineTo(x - r * 0.1, trackY + r * 0.12);
+        ctx.stroke();
+      }
+
+      for (const wheelX of [-r * 0.54, 0, r * 0.54]) {
+        ctx.fillStyle = flash ? '#ffffff' : HULL_SOFT;
+        ctx.beginPath();
+        ctx.arc(wheelX, trackY, r * 0.12, 0, TAU);
+        ctx.fill();
+        ctx.strokeStyle = flash ? '#ffffff' : line;
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = Math.max(0.7, r * 0.05);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Rear exhaust stacks and puffs.
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = HULL;
+      roundRect(ctx, -r * 1.02, side * r * 0.26 - r * 0.12, r * 0.38, r * 0.24, r * 0.06);
+      ctx.fill();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(1.3, r * 0.11);
+      ctx.stroke();
+      ctx.fillStyle = flash ? '#ffffff' : line;
+      ctx.fillRect(-r * 1.01, side * r * 0.26 - r * 0.035, r * 0.09, r * 0.07);
+      const puff = (time * 2.2 + side * 0.24) % 1;
+      ctx.globalAlpha = (1 - puff) * (dashing ? 0.3 : 0.17);
+      ctx.fillStyle = INK;
+      ctx.beginPath();
+      ctx.arc(-r * (1.08 + puff * 0.5), side * r * 0.26, r * (0.08 + puff * 0.2), 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Main hull and layered side armor.
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.84, -r * 0.48);
+    ctx.lineTo(r * 0.28, -r * 0.58);
+    ctx.lineTo(r * 0.58, -r * 0.34);
+    ctx.lineTo(r * 0.6, r * 0.34);
+    ctx.lineTo(r * 0.28, r * 0.58);
+    ctx.lineTo(-r * 0.84, r * 0.48);
+    ctx.closePath();
     ctx.fillStyle = fill;
     ctx.fill();
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = Math.max(3, r * 0.27);
+    ctx.stroke();
+    ctx.strokeStyle = line;
+    ctx.lineWidth = Math.max(1, r * 0.075);
+    ctx.stroke();
+
+    ctx.fillStyle = flash ? 'rgba(255,255,255,0.4)' : HULL_SOFT;
+    roundRect(ctx, -r * 0.68, -r * 0.34, r * 0.9, r * 0.68, r * 0.12);
+    ctx.fill();
+    ctx.strokeStyle = flash ? '#ffffff' : 'rgba(4,9,8,0.8)';
+    ctx.lineWidth = Math.max(1.2, r * 0.1);
+    ctx.stroke();
+
+    for (const side of [-1, 1]) {
+      ctx.strokeStyle = flash ? '#ffffff' : 'rgba(4,9,8,0.74)';
+      ctx.lineWidth = Math.max(1.5, r * 0.13);
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.58, side * r * 0.34);
+      ctx.lineTo(-r * 0.08, side * r * 0.43);
+      ctx.lineTo(r * 0.3, side * r * 0.38);
+      ctx.stroke();
+      this.drawEnemyBolt(ctx, -r * 0.55, side * r * 0.3, Math.max(1.2, r * 0.07));
+      this.drawEnemyBolt(ctx, r * 0.16, side * r * 0.34, Math.max(1, r * 0.06));
+    }
+
+    // Forward ram plate and hazard bands.
+    const ramFill = flash ? '#ffffff' : telegraph ? DANGER : fill;
+    ctx.beginPath();
+    ctx.moveTo(r * 0.34, -r * 0.54);
+    ctx.lineTo(r * 1.04, -r * 0.72);
+    ctx.lineTo(r * 1.22, -r * 0.34);
+    ctx.lineTo(r * 1.3, 0);
+    ctx.lineTo(r * 1.22, r * 0.34);
+    ctx.lineTo(r * 1.04, r * 0.72);
+    ctx.lineTo(r * 0.34, r * 0.54);
+    ctx.closePath();
+    ctx.fillStyle = ramFill;
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(3.2, r * 0.28);
     ctx.stroke();
     ctx.strokeStyle = telegraph ? DANGER_BRIGHT : line;
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = Math.max(1.1, r * 0.09);
     ctx.stroke();
-    ctx.fillStyle = telegraph ? DANGER : 'rgba(4, 9, 8, 0.48)';
-    ctx.fillRect(radius * 0.36, -radius * 0.55, radius * 0.45, radius * 1.1);
-    ctx.strokeStyle = line;
-    ctx.lineWidth = 1.5;
-    for (let i = -1; i <= 1; i += 1) {
+
+    ctx.save();
+    roundRect(ctx, r * 0.5, -r * 0.24, r * 0.56, r * 0.48, r * 0.1);
+    ctx.clip();
+    ctx.fillStyle = flash ? '#ffffff' : HULL_SOFT;
+    ctx.fillRect(r * 0.5, -r * 0.24, r * 0.56, r * 0.48);
+    for (let index = -1; index < 4; index += 1) {
+      ctx.fillStyle = flash
+        ? 'rgba(255,255,255,0.55)'
+        : index % 2 === 0
+          ? 'rgba(255, 216, 121, 0.58)'
+          : 'rgba(4, 9, 8, 0.24)';
       ctx.beginPath();
-      ctx.moveTo(-radius * 0.58, i * radius * 0.25);
-      ctx.lineTo(-radius * 0.28, i * radius * 0.25);
+      ctx.moveTo(r * (0.48 + index * 0.16), -r * 0.3);
+      ctx.lineTo(r * (0.56 + index * 0.16), -r * 0.3);
+      ctx.lineTo(r * (0.4 + index * 0.16), r * 0.3);
+      ctx.lineTo(r * (0.32 + index * 0.16), r * 0.3);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    roundRect(ctx, r * 0.5, -r * 0.24, r * 0.56, r * 0.48, r * 0.1);
+    ctx.strokeStyle = flash ? '#ffffff' : line;
+    ctx.lineWidth = Math.max(0.8, r * 0.055);
+    ctx.stroke();
+
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = flash ? '#ffffff' : HULL;
+      ctx.beginPath();
+      ctx.moveTo(r * 1.17, side * r * 0.56);
+      ctx.lineTo(r * 1.34, side * r * 0.7);
+      ctx.lineTo(r * 1.25, side * r * 0.82);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(1.2, r * 0.08);
+      ctx.stroke();
+      ctx.fillStyle = flash ? '#ffffff' : line;
+      ctx.beginPath();
+      ctx.arc(r * 1.04, side * r * 0.28, Math.max(1.2, r * 0.065), 0, TAU);
+      ctx.fill();
+      this.drawGlow(
+        ctx,
+        r * 1.04,
+        side * r * 0.28,
+        r * 0.22,
+        telegraph ? DANGER_BRIGHT : AMBER_BRIGHT,
+        0.16 + (telegraph ? 0.16 : 0),
+      );
+    }
+
+    // Hydraulic pistons connect the ram to the hull.
+    for (const side of [-1, 1]) {
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(2.6, r * 0.2);
+      ctx.beginPath();
+      ctx.moveTo(r * 0.12, side * r * 0.45);
+      ctx.lineTo(r * 0.72, side * r * 0.5);
+      ctx.stroke();
+      ctx.strokeStyle = line;
+      ctx.lineWidth = Math.max(0.9, r * 0.06);
+      ctx.stroke();
+      ctx.fillStyle = flash ? '#ffffff' : HULL;
+      ctx.beginPath();
+      ctx.arc(r * 0.46, side * r * 0.48, r * 0.14, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = telegraph ? DANGER_BRIGHT : line;
+      ctx.lineWidth = Math.max(0.8, r * 0.05);
       ctx.stroke();
     }
+
+    // Furnace core and forward lamp.
+    this.drawGlow(
+      ctx,
+      r * 0.62,
+      0,
+      r * 0.55,
+      telegraph ? DANGER_BRIGHT : line,
+      telegraph ? 0.32 : 0.12,
+    );
+    ctx.fillStyle = flash ? '#ffffff' : HULL_SOFT;
+    ctx.beginPath();
+    ctx.arc(r * 0.62, 0, r * 0.19, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = telegraph ? DANGER_BRIGHT : line;
+    ctx.lineWidth = Math.max(1.2, r * 0.09);
+    ctx.stroke();
+    ctx.fillStyle = telegraph ? DANGER_BRIGHT : line;
+    ctx.beginPath();
+    ctx.arc(r * 0.62, 0, r * 0.09, 0, TAU);
+    ctx.fill();
+
+    ctx.fillStyle = flash ? '#ffffff' : 'rgba(255,255,255,0.56)';
+    roundRect(ctx, r * 0.85, -r * 0.12, r * 0.17, r * 0.24, r * 0.04);
+    ctx.fill();
+
+    if (dashing) {
+      ctx.strokeStyle = line;
+      for (let index = 0; index < 3; index += 1) {
+        ctx.globalAlpha = 0.18 + index * 0.1;
+        ctx.lineWidth = Math.max(0.8, r * 0.07);
+        ctx.beginPath();
+        ctx.moveTo(-r * (1.15 + index * 0.2), -r * 0.32 + index * r * 0.16);
+        ctx.lineTo(-r * (1.45 + index * 0.2), -r * 0.32 + index * r * 0.16);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    if (stunned) {
+      ctx.strokeStyle = 'rgba(255, 217, 128, 0.9)';
+      ctx.lineWidth = Math.max(1, r * 0.07);
+      for (let index = 0; index < 3; index += 1) {
+        const angle = time * 3.4 + (index * TAU) / 3;
+        const radiusInner = r * 0.55;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * radiusInner, Math.sin(angle) * radiusInner);
+        ctx.lineTo(
+          Math.cos(angle + 0.3) * (radiusInner + r * 0.24),
+          Math.sin(angle + 0.3) * (radiusInner + r * 0.24),
+        );
+        ctx.stroke();
+      }
+    }
+
     if (telegraph) {
-      ctx.strokeStyle = 'rgba(255, 92, 92, 0.52)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = 'rgba(255, 92, 92, 0.55)';
+      ctx.lineWidth = Math.max(1.5, r * 0.09);
+      ctx.setLineDash([r * 0.5, r * 0.45]);
       ctx.lineDashOffset = -time * 30;
       ctx.beginPath();
-      ctx.moveTo(radius * 0.9, 0);
-      ctx.lineTo(radius * 4.6, 0);
+      ctx.moveTo(r * 1.25, 0);
+      ctx.lineTo(r * 4.6, 0);
       ctx.stroke();
       ctx.setLineDash([]);
     }
+
     ctx.restore();
   }
 
@@ -1117,31 +1736,254 @@ export class BattleRenderer {
     line: string,
     time: number,
   ): void {
+    const r = Math.max(8, radius);
+    const t = time + enemy.id * 0.47;
+    const flash = fill === INK;
+    const charge = clamp01(1 - enemy.attackTimer / 0.55);
+    const recoil = -charge * r * 0.08;
+
     ctx.save();
     ctx.rotate(enemy.angle);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Tripod legs give the turret a grounded, top-heavy silhouette.
+    const legs = [
+      { x: -r * 0.42, y: -r * 0.46, kx: -r * 0.92, ky: -r * 0.88, fx: -r * 1.1, fy: -r * 1.02 },
+      { x: -r * 0.42, y: r * 0.46, kx: -r * 0.92, ky: r * 0.88, fx: -r * 1.1, fy: r * 1.02 },
+      { x: -r * 0.66, y: 0, kx: -r * 1.14, ky: 0, fx: -r * 1.28, fy: 0 },
+    ];
+    for (let index = 0; index < legs.length; index += 1) {
+      const leg = legs[index]!;
+      const sway = Math.sin(t * 2.6 + index * 2.1) * r * 0.045;
+      const kneeX = leg.kx + sway;
+      const footX = leg.fx + sway;
+      ctx.beginPath();
+      ctx.moveTo(leg.x, leg.y);
+      ctx.quadraticCurveTo(kneeX, leg.ky, footX, leg.fy);
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(2.8, r * 0.28);
+      ctx.stroke();
+      ctx.strokeStyle = flash ? '#ffffff' : fill;
+      ctx.lineWidth = Math.max(1.3, r * 0.14);
+      ctx.stroke();
+      ctx.strokeStyle = line;
+      ctx.globalAlpha = 0.78;
+      ctx.lineWidth = Math.max(0.75, r * 0.05);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = flash ? '#ffffff' : HULL;
+      ctx.beginPath();
+      ctx.ellipse(footX, leg.fy, r * 0.23, r * 0.115, 0, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = flash ? '#ffffff' : line;
+      ctx.lineWidth = Math.max(0.8, r * 0.045);
+      ctx.stroke();
+      ctx.fillStyle = flash ? '#ffffff' : HULL_SOFT;
+      ctx.beginPath();
+      ctx.arc(kneeX, leg.ky, r * 0.11, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = flash ? '#ffffff' : line;
+      ctx.lineWidth = Math.max(0.6, r * 0.035);
+      ctx.stroke();
+    }
+
+    // Rear pressure tanks and feed lines.
+    for (const side of [-1, 1]) {
+      const tankY = side * r * 0.4;
+      ctx.fillStyle = flash ? '#ffffff' : fill;
+      roundRect(ctx, -r * 1.0, tankY - r * 0.15, r * 0.5, r * 0.3, r * 0.13);
+      ctx.fill();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(1.6, r * 0.13);
+      ctx.stroke();
+      ctx.fillStyle = flash ? 'rgba(255,255,255,0.42)' : HULL_SOFT;
+      ctx.fillRect(-r * 0.92, tankY - r * 0.045, r * 0.34, r * 0.09);
+      ctx.strokeStyle = line;
+      ctx.globalAlpha = 0.8;
+      ctx.lineWidth = Math.max(0.8, r * 0.045);
+      ctx.strokeRect(-r * 0.92, tankY - r * 0.045, r * 0.34, r * 0.09);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = flash ? '#ffffff' : OUTLINE;
+      ctx.lineWidth = Math.max(2, r * 0.13);
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.56, tankY);
+      ctx.quadraticCurveTo(-r * 0.32, tankY * 1.25, -r * 0.06, tankY * 0.48);
+      ctx.stroke();
+      ctx.strokeStyle = flash ? '#ffffff' : line;
+      ctx.lineWidth = Math.max(0.8, r * 0.045);
+      ctx.stroke();
+      this.drawEnemyBolt(ctx, -r * 0.78, tankY, Math.max(1.1, r * 0.06));
+    }
+
+    // Armored pressure shell.
     ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, TAU);
+    ctx.moveTo(r * 0.52, 0);
+    ctx.bezierCurveTo(r * 0.48, -r * 0.54, -r * 0.18, -r * 0.72, -r * 0.74, -r * 0.46);
+    ctx.bezierCurveTo(-r * 0.98, -r * 0.26, -r * 0.98, r * 0.26, -r * 0.74, r * 0.46);
+    ctx.bezierCurveTo(-r * 0.18, r * 0.72, r * 0.48, r * 0.54, r * 0.52, 0);
+    ctx.closePath();
     ctx.fillStyle = fill;
     ctx.fill();
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = Math.max(3, r * 0.27);
     ctx.stroke();
     ctx.strokeStyle = line;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(1, r * 0.075);
     ctx.stroke();
-    ctx.fillStyle = 'rgba(4, 9, 8, 0.68)';
-    for (let i = 0; i < 3; i += 1) {
-      const a = -0.32 + i * 0.32;
-      ctx.beginPath();
-      ctx.arc(Math.cos(a) * radius * 0.62, Math.sin(a) * radius * 0.62, radius * 0.13, 0, TAU);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 0.55 + pulse(time, 3.4) * 0.45;
-    ctx.fillStyle = line;
+
+    // Layered armor plates and warning bands.
     ctx.beginPath();
-    ctx.arc(-radius * 0.18, 0, radius * 0.27, 0, TAU);
+    ctx.moveTo(r * 0.32, -r * 0.32);
+    ctx.quadraticCurveTo(-r * 0.2, -r * 0.55, -r * 0.66, -r * 0.3);
+    ctx.lineTo(-r * 0.76, 0);
+    ctx.lineTo(-r * 0.66, r * 0.3);
+    ctx.quadraticCurveTo(-r * 0.2, r * 0.55, r * 0.32, r * 0.32);
+    ctx.closePath();
+    ctx.fillStyle = flash ? 'rgba(255,255,255,0.34)' : HULL_SOFT;
+    ctx.fill();
+    ctx.strokeStyle = flash ? '#ffffff' : 'rgba(4,9,8,0.8)';
+    ctx.lineWidth = Math.max(1, r * 0.08);
+    ctx.stroke();
+
+    for (const side of [-1, 1]) {
+      this.drawEnemyBolt(ctx, -r * 0.5, side * r * 0.35, Math.max(1, r * 0.055));
+      this.drawEnemyBolt(ctx, -r * 0.16, side * r * 0.26, Math.max(0.9, r * 0.05));
+    }
+    ctx.strokeStyle = flash ? '#ffffff' : line;
+    ctx.globalAlpha = 0.62;
+    ctx.lineWidth = Math.max(0.8, r * 0.055);
+    for (let index = 0; index < 3; index += 1) {
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.34 + index * r * 0.2, -r * 0.37);
+      ctx.lineTo(-r * 0.43 + index * r * 0.2, r * 0.37);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Glowing pressure core.
+    const coreGlow = 0.16 + charge * 0.34;
+    this.drawGlow(ctx, -r * 0.28, 0, r * 0.52, line, coreGlow);
+    ctx.fillStyle = flash ? '#ffffff' : HULL;
+    ctx.beginPath();
+    ctx.arc(-r * 0.28, 0, r * 0.23, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = line;
+    ctx.lineWidth = Math.max(1, r * 0.07);
+    ctx.stroke();
+    ctx.fillStyle = line;
+    ctx.globalAlpha = 0.62 + pulse(t, 4.2) * 0.24;
+    ctx.beginPath();
+    ctx.arc(-r * 0.28, 0, r * 0.1, 0, TAU);
     ctx.fill();
     ctx.globalAlpha = 1;
+
+    // Cooling fins and rear vent.
+    ctx.strokeStyle = flash ? '#ffffff' : 'rgba(242, 234, 216, 0.34)';
+    ctx.lineWidth = Math.max(0.7, r * 0.045);
+    for (let index = 0; index < 3; index += 1) {
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.88, -r * 0.18 + index * r * 0.18);
+      ctx.lineTo(-r * 1.03, -r * 0.18 + index * r * 0.18);
+      ctx.stroke();
+    }
+
+    // Long segmented cannon with a flared three-prong muzzle.
+    ctx.save();
+    ctx.translate(recoil, 0);
+    ctx.fillStyle = flash ? '#ffffff' : HULL;
+    roundRect(ctx, r * 0.34, -r * 0.24, r * 0.82, r * 0.48, r * 0.13);
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(2, r * 0.17);
+    ctx.stroke();
+    ctx.fillStyle = fill;
+    roundRect(ctx, r * 0.4, -r * 0.15, r * 0.8, r * 0.3, r * 0.09);
+    ctx.fill();
+    ctx.strokeStyle = line;
+    ctx.globalAlpha = 0.82;
+    ctx.lineWidth = Math.max(0.8, r * 0.055);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    for (const x of [r * 0.55, r * 0.83, r * 1.05]) {
+      ctx.strokeStyle = flash ? '#ffffff' : 'rgba(4,9,8,0.8)';
+      ctx.lineWidth = Math.max(1.2, r * 0.1);
+      ctx.beginPath();
+      ctx.moveTo(x, -r * 0.2);
+      ctx.lineTo(x, r * 0.2);
+      ctx.stroke();
+      ctx.strokeStyle = line;
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = Math.max(0.6, r * 0.035);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(r * 1.04, -r * 0.3);
+    ctx.lineTo(r * 1.26, -r * 0.4);
+    ctx.lineTo(r * 1.4, -r * 0.16);
+    ctx.lineTo(r * 1.36, 0);
+    ctx.lineTo(r * 1.4, r * 0.16);
+    ctx.lineTo(r * 1.26, r * 0.4);
+    ctx.lineTo(r * 1.04, r * 0.3);
+    ctx.closePath();
+    ctx.fillStyle = flash ? '#ffffff' : fill;
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(2, r * 0.16);
+    ctx.stroke();
+    ctx.strokeStyle = line;
+    ctx.lineWidth = Math.max(0.8, r * 0.055);
+    ctx.stroke();
+
+    ctx.fillStyle = flash ? '#ffffff' : HULL;
+    ctx.beginPath();
+    ctx.arc(r * 1.26, 0, r * 0.13, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = line;
+    ctx.lineWidth = Math.max(0.8, r * 0.05);
+    ctx.stroke();
+
+    this.drawGlow(
+      ctx,
+      r * 1.34,
+      0,
+      r * (0.45 + charge * 0.3),
+      line,
+      charge > 0.02 ? 0.24 + charge * 0.28 : 0.07,
+    );
+    ctx.fillStyle = line;
+    ctx.globalAlpha = 0.6 + charge * 0.4;
+    ctx.beginPath();
+    ctx.arc(r * 1.26, 0, r * (0.045 + charge * 0.03), 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    if (charge > 0.35) {
+      ctx.strokeStyle = line;
+      ctx.globalAlpha = 0.22 + charge * 0.35;
+      ctx.lineWidth = Math.max(0.8, r * 0.05);
+      ctx.beginPath();
+      ctx.arc(r * 1.26, 0, r * (0.2 + charge * 0.12), 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+
+    // Twin targeting lamps sit above the barrel mount.
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = flash ? '#ffffff' : HULL_SOFT;
+      ctx.beginPath();
+      ctx.arc(r * 0.24, side * r * 0.3, r * 0.09, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = line;
+      ctx.beginPath();
+      ctx.arc(r * 0.25, side * r * 0.3, Math.max(0.8, r * 0.035), 0, TAU);
+      ctx.fill();
+    }
+
     ctx.restore();
   }
 
@@ -1153,36 +1995,206 @@ export class BattleRenderer {
     line: string,
     time: number,
   ): void {
+    const r = Math.max(14, radius);
+    const t = time + enemy.id * 0.53;
+    const flash = fill === INK;
+    const charge = clamp01(1 - enemy.attackTimer / 0.65);
+    const hover = Math.sin(t * 3.6) * r * 0.07;
+    const eyeColor = flash ? '#ffffff' : DANGER_BRIGHT;
+
     ctx.save();
-    ctx.rotate(-time * 1.1 + enemy.id);
+    ctx.rotate(enemy.angle);
+    ctx.translate(0, hover);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Gravity vanes and drifting exhaust.
+    for (const side of [-1, 1]) {
+      const flick = 0.7 + pulse(t, 7.4, side) * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.58, side * r * 0.28);
+      ctx.lineTo(-r * (0.94 + flick * 0.12), side * r * 0.5);
+      ctx.lineTo(-r * 0.72, side * r * 0.52);
+      ctx.closePath();
+      ctx.fillStyle = flash ? '#ffffff' : line;
+      ctx.globalAlpha = 0.2 + flick * 0.18;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(1.2, r * 0.08);
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.48, side * r * 0.3);
+      ctx.lineTo(-r * 0.84, side * r * 0.45);
+      ctx.stroke();
+      ctx.strokeStyle = line;
+      ctx.globalAlpha = 0.7;
+      ctx.lineWidth = Math.max(0.7, r * 0.035);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // A crown of sensor prongs gives the elite a command silhouette.
+    for (const angle of [-0.55, 0, 0.55]) {
+      ctx.save();
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.62, -r * 0.08);
+      ctx.lineTo(-r * 1.02, 0);
+      ctx.lineTo(-r * 0.68, r * 0.14);
+      ctx.closePath();
+      ctx.fillStyle = flash ? '#ffffff' : fill;
+      ctx.fill();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(1.3, r * 0.09);
+      ctx.stroke();
+      ctx.strokeStyle = line;
+      ctx.lineWidth = Math.max(0.7, r * 0.035);
+      ctx.stroke();
+      ctx.fillStyle = line;
+      ctx.beginPath();
+      ctx.arc(-r * 0.95, 0, Math.max(1, r * 0.045), 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Heavy shoulder arms and cannon pods.
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(r * 0.02, side * r * 0.34);
+      ctx.lineTo(r * 0.44, side * r * 0.7);
+      ctx.lineTo(r * 0.88, side * r * 0.58);
+      ctx.lineTo(r * 0.72, side * r * 0.34);
+      ctx.closePath();
+      ctx.fillStyle = flash ? '#ffffff' : fill;
+      ctx.fill();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(2.4, r * 0.17);
+      ctx.stroke();
+      ctx.strokeStyle = line;
+      ctx.globalAlpha = 0.75;
+      ctx.lineWidth = Math.max(0.8, r * 0.045);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      ctx.beginPath();
+      ctx.moveTo(r * 0.2, side * r * 0.46);
+      ctx.lineTo(r * 0.5, side * r * 0.57);
+      ctx.lineTo(r * 0.37, side * r * 0.36);
+      ctx.closePath();
+      ctx.fillStyle = flash ? 'rgba(255,255,255,0.36)' : HULL_SOFT;
+      ctx.fill();
+
+      ctx.fillStyle = fill;
+      roundRect(ctx, r * 0.48, side * r * 0.58 - r * 0.16, r * 0.58, r * 0.32, r * 0.12);
+      ctx.fill();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(2, r * 0.13);
+      ctx.stroke();
+      ctx.strokeStyle = line;
+      ctx.lineWidth = Math.max(0.7, r * 0.04);
+      ctx.stroke();
+
+      ctx.fillStyle = flash ? '#ffffff' : HULL_SOFT;
+      roundRect(ctx, r * 0.96, side * r * 0.58 - r * 0.1, r * 0.35, r * 0.2, r * 0.06);
+      ctx.fill();
+      ctx.strokeStyle = line;
+      ctx.lineWidth = Math.max(0.9, r * 0.05);
+      ctx.stroke();
+      ctx.fillStyle = line;
+      ctx.globalAlpha = 0.45 + charge * 0.55;
+      ctx.beginPath();
+      ctx.arc(r * 1.27, side * r * 0.58, r * (0.055 + charge * 0.035), 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      this.drawEnemyBolt(ctx, r * 0.66, side * r * 0.57, Math.max(1.1, r * 0.05));
+    }
+
+    // Central command chassis.
     ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, TAU);
+    ctx.moveTo(r * 0.86, 0);
+    ctx.lineTo(r * 0.46, -r * 0.46);
+    ctx.lineTo(-r * 0.28, -r * 0.6);
+    ctx.lineTo(-r * 0.82, -r * 0.26);
+    ctx.lineTo(-r * 0.82, r * 0.26);
+    ctx.lineTo(-r * 0.28, r * 0.6);
+    ctx.lineTo(r * 0.46, r * 0.46);
+    ctx.closePath();
     ctx.fillStyle = fill;
     ctx.fill();
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = 5;
+    ctx.lineWidth = Math.max(3.2, r * 0.24);
     ctx.stroke();
     ctx.strokeStyle = line;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(1, r * 0.065);
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(245, 165, 36, 0.8)';
-    ctx.lineWidth = 2.5;
-    ctx.setLineDash([14, 9]);
+
     ctx.beginPath();
-    ctx.arc(0, 0, radius + 7, 0, TAU);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.rotate(time * 2.3);
-    ctx.strokeStyle = line;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius * 0.6, 0.2, 2.5);
-    ctx.arc(0, 0, radius * 0.6, Math.PI + 0.2, Math.PI + 2.5);
-    ctx.stroke();
-    ctx.fillStyle = DANGER_BRIGHT;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius * 0.2, 0, TAU);
+    ctx.moveTo(r * 0.48, 0);
+    ctx.lineTo(r * 0.16, -r * 0.32);
+    ctx.lineTo(-r * 0.52, -r * 0.35);
+    ctx.lineTo(-r * 0.69, 0);
+    ctx.lineTo(-r * 0.52, r * 0.35);
+    ctx.lineTo(r * 0.16, r * 0.32);
+    ctx.closePath();
+    ctx.fillStyle = flash ? 'rgba(255,255,255,0.35)' : HULL_SOFT;
     ctx.fill();
+    ctx.strokeStyle = flash ? '#ffffff' : 'rgba(4,9,8,0.9)';
+    ctx.lineWidth = Math.max(1.1, r * 0.09);
+    ctx.stroke();
+
+    // Command eye with a pulsing halo when the barrage is charging.
+    this.drawGlow(
+      ctx,
+      -r * 0.02,
+      0,
+      r * (0.55 + charge * 0.2),
+      eyeColor,
+      0.1 + charge * 0.25,
+    );
+    ctx.fillStyle = flash ? '#ffffff' : HULL;
+    ctx.beginPath();
+    ctx.arc(-r * 0.02, 0, r * 0.36, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = line;
+    ctx.lineWidth = Math.max(1.4, r * 0.08);
+    ctx.stroke();
+    ctx.strokeStyle = flash ? '#ffffff' : 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = Math.max(0.7, r * 0.04);
+    ctx.beginPath();
+    ctx.arc(-r * 0.02, 0, r * 0.27, -2.5, -0.6);
+    ctx.stroke();
+    ctx.fillStyle = eyeColor;
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.02, 0, r * 0.16, r * 0.075, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = Math.max(0.6, r * 0.028);
+    ctx.beginPath();
+    ctx.arc(-r * 0.02, 0, r * 0.31, -0.8, 0.7);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 244, 220, 0.95)';
+    ctx.beginPath();
+    ctx.arc(r * 0.03, -r * 0.015, r * 0.035, 0, TAU);
+    ctx.fill();
+
+    // Warning chevrons and an under-slung reactor.
+    for (const side of [-1, 1]) {
+      ctx.strokeStyle = flash ? '#ffffff' : 'rgba(242, 234, 216, 0.38)';
+      ctx.lineWidth = Math.max(0.8, r * 0.045);
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.36, side * r * 0.24);
+      ctx.lineTo(-r * 0.16, side * r * 0.19);
+      ctx.lineTo(-r * 0.32, side * r * 0.12);
+      ctx.stroke();
+    }
+    ctx.fillStyle = flash ? '#ffffff' : HULL;
+    roundRect(ctx, -r * 0.34, r * 0.42, r * 0.4, r * 0.16, r * 0.06);
+    ctx.fill();
+    ctx.strokeStyle = line;
+    ctx.lineWidth = Math.max(0.8, r * 0.04);
+    ctx.stroke();
+
     ctx.restore();
   }
 
@@ -1194,48 +2206,209 @@ export class BattleRenderer {
     line: string,
     time: number,
   ): void {
+    const r = Math.max(24, radius);
+    const t = time + enemy.id * 0.19;
+    const flash = fill === INK;
     const phase2 = enemy.phase === 2;
+    const charging = enemy.mode === 'bossCharge' || enemy.mode === 'bossTelegraph';
+    const heat = phase2 ? DANGER_BRIGHT : AMBER_BRIGHT;
+    const deepHeat = phase2 ? '#e13224' : '#d66a12';
+
+    if (!flash) {
+      this.drawGlow(ctx, 0, 0, r * 2.1, heat, charging ? 0.28 : 0.16);
+    }
+
+    // Outer gear housing.
     ctx.save();
-    ctx.rotate(time * 0.18);
-    gearPath(ctx, radius, 12, 0, 0.16);
+    ctx.rotate(t * (phase2 ? 0.2 : 0.12));
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.06, 0, TAU);
+    ctx.fillStyle = HULL;
+    ctx.fill();
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(5, r * 0.14);
+    ctx.stroke();
+
+    gearPath(ctx, r, 16, 0, 0.19);
     ctx.fillStyle = fill;
     ctx.fill();
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = 8;
+    ctx.lineWidth = Math.max(5, r * 0.14);
     ctx.stroke();
     ctx.strokeStyle = line;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = Math.max(1.6, r * 0.045);
     ctx.stroke();
 
-    ctx.rotate(-time * 0.72);
     ctx.beginPath();
-    ctx.arc(0, 0, radius * 0.7, 0, TAU);
-    ctx.fillStyle = 'rgba(4, 9, 8, 0.74)';
+    ctx.arc(0, 0, r * 0.86, 0, TAU);
+    ctx.fillStyle = flash ? 'rgba(255,255,255,0.36)' : HULL_SOFT;
     ctx.fill();
-    ctx.strokeStyle = phase2 ? DANGER : 'rgba(245, 165, 36, 0.86)';
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = flash ? '#ffffff' : 'rgba(4,9,8,0.9)';
+    ctx.lineWidth = Math.max(2.5, r * 0.07);
     ctx.stroke();
 
-    ctx.rotate(time * 0.9);
-    polygonPath(ctx, radius * 0.46, 3, time * 0.8);
-    ctx.fillStyle = phase2 ? DANGER : AMBER;
-    ctx.globalAlpha = 0.72 + pulse(time, 3) * 0.22;
+    for (let index = 0; index < 8; index += 1) {
+      const angle = (index * TAU) / 8 + Math.PI / 8;
+      this.drawEnemyBolt(
+        ctx,
+        Math.cos(angle) * r * 0.91,
+        Math.sin(angle) * r * 0.91,
+        Math.max(1.6, r * 0.045),
+      );
+    }
+    ctx.restore();
+
+    // Counter-rotating armor clamps.
+    ctx.save();
+    ctx.rotate(-t * (phase2 ? 0.48 : 0.3));
+    for (let index = 0; index < 4; index += 1) {
+      ctx.save();
+      ctx.rotate((index * TAU) / 4 + Math.PI / 4);
+      ctx.beginPath();
+      ctx.moveTo(r * 0.4, -r * 0.3);
+      ctx.lineTo(r * 0.82, -r * 0.34);
+      ctx.lineTo(r * 1.06, -r * 0.16);
+      ctx.lineTo(r * 1.12, 0);
+      ctx.lineTo(r * 0.92, r * 0.18);
+      ctx.lineTo(r * 0.46, r * 0.2);
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(3.2, r * 0.1);
+      ctx.stroke();
+      ctx.strokeStyle = line;
+      ctx.lineWidth = Math.max(1.2, r * 0.035);
+      ctx.stroke();
+
+      ctx.strokeStyle = flash ? '#ffffff' : HULL_SOFT;
+      ctx.lineWidth = Math.max(3, r * 0.08);
+      ctx.beginPath();
+      ctx.moveTo(r * 0.52, -r * 0.15);
+      ctx.lineTo(r * 0.9, -r * 0.16);
+      ctx.stroke();
+      ctx.strokeStyle = flash ? '#ffffff' : 'rgba(242,234,216,0.35)';
+      ctx.lineWidth = Math.max(1, r * 0.028);
+      ctx.beginPath();
+      ctx.moveTo(r * 0.56, r * 0.1);
+      ctx.lineTo(r * 0.97, r * 0.08);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // Fixed furnace rim and eight intake vents.
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.73, 0, TAU);
+    ctx.fillStyle = flash ? '#ffffff' : HULL;
     ctx.fill();
+    ctx.strokeStyle = phase2 ? DANGER : line;
+    ctx.lineWidth = Math.max(2.4, r * 0.075);
+    ctx.stroke();
+
+    for (let index = 0; index < 8; index += 1) {
+      ctx.save();
+      ctx.rotate((index * TAU) / 8 + t * 0.14);
+      ctx.fillStyle = flash ? 'rgba(255,255,255,0.8)' : HULL_SOFT;
+      roundRect(ctx, r * 0.5, -r * 0.055, r * 0.18, r * 0.11, r * 0.035);
+      ctx.fill();
+      ctx.strokeStyle = phase2 ? DANGER : line;
+      ctx.globalAlpha = 0.55 + pulse(t, 3.4, index) * 0.3;
+      ctx.lineWidth = Math.max(0.7, r * 0.026);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // Molten reactor core with pulsing inner rings.
+    const coreRadius = r * (0.56 + pulse(t, 3.1) * 0.018 + (charging ? 0.035 : 0));
+    const core = ctx.createRadialGradient(0, 0, 0, 0, 0, coreRadius);
+    core.addColorStop(0, flash ? '#ffffff' : '#fff5c8');
+    core.addColorStop(0.26, flash ? '#ffffff' : heat);
+    core.addColorStop(0.68, deepHeat);
+    core.addColorStop(0.92, phase2 ? '#7e1712' : '#7c2b0b');
+    core.addColorStop(1, 'rgba(4, 9, 8, 0.1)');
+    ctx.beginPath();
+    ctx.arc(0, 0, coreRadius, 0, TAU);
+    ctx.fillStyle = core;
+    ctx.fill();
+    ctx.strokeStyle = flash ? '#ffffff' : line;
+    ctx.lineWidth = Math.max(1.8, r * 0.05);
+    ctx.stroke();
+
+    ctx.save();
+    ctx.rotate(-t * 0.9);
+    ctx.strokeStyle = flash ? '#ffffff' : line;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = Math.max(0.9, r * 0.026);
+    ctx.setLineDash([r * 0.16, r * 0.12]);
+    ctx.beginPath();
+    ctx.arc(0, 0, coreRadius * 0.78, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
     ctx.globalAlpha = 1;
-
-    ctx.beginPath();
-    ctx.arc(0, 0, radius * 0.17, 0, TAU);
-    ctx.fillStyle = phase2 ? '#ffd1c4' : AMBER_BRIGHT;
-    ctx.fill();
     ctx.restore();
 
     ctx.save();
-    ctx.strokeStyle = phase2 ? 'rgba(255, 92, 92, 0.6)' : 'rgba(245, 165, 36, 0.42)';
-    ctx.lineWidth = 3;
-    for (let i = 0; i < 4; i += 1) {
-      const a = Math.PI / 4 + (i * TAU) / 4;
+    ctx.rotate(t * 1.35);
+    polygonPath(ctx, coreRadius * 0.43, 6, 0);
+    ctx.fillStyle = flash ? '#ffffff' : line;
+    ctx.globalAlpha = 0.5 + pulse(t, 4.2) * 0.22;
+    ctx.fill();
+    ctx.strokeStyle = flash ? '#ffffff' : 'rgba(255,255,255,0.42)';
+    ctx.lineWidth = Math.max(0.9, r * 0.024);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // Phase-two heat fractures crawl across the armor.
+    if (phase2) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 198, 120, 0.72)';
+      ctx.lineWidth = Math.max(1, r * 0.026);
+      for (let index = 0; index < 5; index += 1) {
+        const angle = (index * TAU) / 5 + 0.3;
+        const start = coreRadius * 0.9;
+        const end = r * (0.88 + (index % 2) * 0.1);
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * start, Math.sin(angle) * start);
+        for (let step = 1; step <= 3; step += 1) {
+          const radiusStep = start + ((end - start) * step) / 3;
+          const wobble = (step % 2 === 0 ? 1 : -1) * 0.06;
+          ctx.lineTo(
+            Math.cos(angle + wobble) * radiusStep,
+            Math.sin(angle + wobble) * radiusStep,
+          );
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Embers vent from the outer casing.
+    for (let index = 0; index < 7; index += 1) {
+      const angle = time * (0.5 + index * 0.03) + index * 0.9;
+      const distance = r * (1.06 + 0.2 * pulse(t, 1.8, index));
+      ctx.fillStyle = index % 2 === 0 ? heat : DANGER_BRIGHT;
+      ctx.globalAlpha = 0.3 + pulse(t, 4, index) * 0.45;
+      const size = Math.max(1, r * (0.025 + (index % 3) * 0.012));
+      ctx.fillRect(
+        Math.cos(angle) * distance - size / 2,
+        Math.sin(angle) * distance - size / 2,
+        size,
+        size,
+      );
+    }
+    ctx.globalAlpha = 1;
+
+    // Broken locking arcs read as an ancient, overloaded machine.
+    ctx.save();
+    ctx.strokeStyle = phase2 ? 'rgba(255, 92, 92, 0.72)' : 'rgba(245, 165, 36, 0.46)';
+    ctx.lineWidth = Math.max(2, r * 0.055);
+    for (let index = 0; index < 4; index += 1) {
+      const angle = Math.PI / 4 + (index * TAU) / 4;
       ctx.beginPath();
-      ctx.arc(0, 0, radius + 10, a - 0.16, a + 0.16);
+      ctx.arc(0, 0, r * 1.16, angle - 0.16, angle + 0.16);
       ctx.stroke();
     }
     ctx.restore();
@@ -1317,7 +2490,9 @@ export class BattleRenderer {
 
     const bob = Math.sin(time * 9) * 0.65;
     const weapon = weaponFor(run);
-    const weaponColor = weapon?.color ?? palette.primary;
+    const weaponColor = weapon
+      ? weaponColorForLevel(weapon.def, weapon.level)
+      : palette.primary;
     const charId = run?.characterId ?? 'sunsetNeedle';
 
     ctx.fillStyle = palette.metal;
@@ -1429,7 +2604,15 @@ export class BattleRenderer {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
     ctx.fillRect(radius * 0.63, -radius * 0.27 + bob, 1.6, radius * 0.5);
 
-    this.drawPlayerWeapon(ctx, weapon, weaponColor, radius, bob, time);
+    this.drawPlayerWeapon(
+      ctx,
+      weapon?.def,
+      weapon?.level ?? 1,
+      weaponColor,
+      radius,
+      bob,
+      time,
+    );
 
     if (player.hitFlash > 0) {
       ctx.globalAlpha = clamp01(player.hitFlash * 9) * 0.8;
@@ -1480,6 +2663,7 @@ export class BattleRenderer {
   private drawPlayerWeapon(
     ctx: CanvasRenderingContext2D,
     weapon: WeaponDef | undefined,
+    level: number,
     color: string,
     radius: number,
     bob: number,
@@ -1488,6 +2672,9 @@ export class BattleRenderer {
     const behavior = weapon?.behavior ?? 'projectile';
     ctx.save();
     ctx.translate(radius * 0.25, radius * 0.55 + bob);
+    if (level > 1) {
+      this.drawGlow(ctx, radius * 0.45, 0, radius * 1.5, color, 0.08 + level * 0.05);
+    }
     switch (behavior) {
       case 'shotgun':
         ctx.fillStyle = color;

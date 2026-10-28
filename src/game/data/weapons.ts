@@ -18,13 +18,14 @@ const pulseNailer: WeaponDef = {
   knockback: 0,
   icon: '⊹',
   color: '#F5A524',
+  upgradeColors: ['#FF7A59', '#FF4FD8'],
 };
 
 const scatterRivets: WeaponDef = {
   id: 'scatterRivets',
   name: '散射铆钉',
   role: '近距爆发',
-  description: '一次打出 5 发铆钉，40° 扇形覆盖近距离，贴脸时总伤害极高。',
+  description: '一次打出 5 发铆钉，26° 扇形覆盖近距离，贴脸时总伤害极高。',
   behavior: 'shotgun',
   baseDamage: 2.6,
   cooldown: 1.1,
@@ -33,11 +34,12 @@ const scatterRivets: WeaponDef = {
   projectileSpeed: 780,
   projectileRadius: 3,
   pelletCount: 5,
-  spreadDeg: 40,
+  spreadDeg: 26,
   pierce: 0,
   knockback: 0,
   icon: '⁂',
   color: '#67E8C7',
+  upgradeColors: ['#38BDF8', '#A78BFA'],
 };
 
 const arcHammer: WeaponDef = {
@@ -58,6 +60,7 @@ const arcHammer: WeaponDef = {
   knockback: 160,
   icon: '⌁',
   color: '#5B8CFF',
+  upgradeColors: ['#C084FC', '#F472B6'],
 };
 
 const returnGear: WeaponDef = {
@@ -78,6 +81,7 @@ const returnGear: WeaponDef = {
   knockback: 0,
   icon: '✳',
   color: '#D98B3A',
+  upgradeColors: ['#FACC15', '#FB7185'],
 };
 
 const railSpike: WeaponDef = {
@@ -98,6 +102,7 @@ const railSpike: WeaponDef = {
   knockback: 0,
   icon: '⟶',
   color: '#4C6FFF',
+  upgradeColors: ['#22D3EE', '#FDE047'],
 };
 
 export const WEAPON_LIST: readonly WeaponDef[] = [
@@ -123,3 +128,22 @@ export const WEAPON_PRICE: Record<WeaponId, number> = {
   returnGear: returnGear.price,
   railSpike: railSpike.price,
 };
+
+const MIN_VISUAL_LEVEL = 1;
+const MAX_VISUAL_LEVEL = 3;
+
+/**
+ * 武器按等级取色：Lv.1 沿用本体色，Lv.2 / Lv.3 使用专属颜色。
+ * 非法等级会被夹到 1–3，避免存档或调试数据导致渲染异常。
+ */
+export function weaponColorForLevel(
+  def: Pick<WeaponDef, 'color' | 'upgradeColors'>,
+  level: number,
+): string {
+  const normalized = Math.min(
+    MAX_VISUAL_LEVEL,
+    Math.max(MIN_VISUAL_LEVEL, Math.floor(Number.isFinite(level) ? level : MIN_VISUAL_LEVEL)),
+  );
+  if (normalized === 1) return def.color;
+  return def.upgradeColors[normalized - 2] ?? def.color;
+}

@@ -13,7 +13,7 @@ const sunsetNeedle: CharacterDef = {
   difficulty: 3,
   startingWeaponId: 'pulseNailer',
   base: {
-    maxHp: 80,
+    maxHp: 65,
     armor: 0,
     moveSpeed: 235,
     damagePct: -0.05,
@@ -60,7 +60,7 @@ const simon: CharacterDef = {
   difficulty: 1,
   startingWeaponId: 'scatterRivets',
   base: {
-    maxHp: 100,
+    maxHp: 90,
     armor: 1,
     moveSpeed: 220,
     damagePct: 0,
@@ -71,9 +71,9 @@ const simon: CharacterDef = {
     {
       id: 'simonTooStrong',
       name: 'Simon太强了',
-      summary: '伤害 +20%；击杀时 25% 溢出伤害弹射 160px 内最近敌人，不连锁。',
+      summary: '伤害 +50%；击杀时 25% 溢出伤害弹射 160px 内最近敌人，不连锁。',
       description:
-        '常驻伤害 +20%，与其他伤害加成线性相加。直接伤害击杀敌人时，超出目标剩余生命的 25% 伤害会弹射给 160px 内最近的另一名敌人；每次击杀最多弹射 1 次，弹射不会再次触发弹射，可正常击杀并掉落金币。',
+        '常驻伤害 +50%，与其他伤害加成线性相加。直接伤害击杀敌人时，超出目标剩余生命的 25% 伤害会弹射给 160px 内最近的另一名敌人；每次击杀最多弹射 1 次，弹射不会再次触发弹射，可正常击杀并掉落金币。',
     },
     {
       id: 'simonWillFixIt',

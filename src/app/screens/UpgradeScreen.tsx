@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { JSX } from 'react';
 import { Button } from '../components/Button';
+import { GameIcon } from '../components/GameIcon';
 import { Icon } from '../components/Icon';
 import type { UpgradeChoice } from '../../game/types';
 import { cn } from '../lib/cn';
@@ -80,23 +81,35 @@ export function UpgradeScreen({
           {choices.map((choice, index) => {
             const label = choice.type === 'repair' ? '应急维修' : choice.name;
             const isRepair = choice.type === 'repair';
+            const isRisk = choice.risk;
 
             return (
               <button
                 key={`${choice.id}-${index}`}
                 ref={index === 0 ? firstCardRef : undefined}
                 type="button"
-                className={cn('upgrade-card', isRepair && 'upgrade-card--repair')}
+                className={cn(
+                  'upgrade-card',
+                  isRepair && 'upgrade-card--repair',
+                  isRisk && 'upgrade-card--risk',
+                )}
+                data-icon={choice.id}
                 aria-label={`${label}，${choice.description}，已叠加 ${choice.stacks}/${choice.maxStacks}`}
                 onClick={() => onChoose(choice.id)}
               >
                 <span className="upgrade-card__beam" aria-hidden="true" />
                 <span className="upgrade-card__corner upgrade-card__corner--tl" aria-hidden="true" />
                 <span className="upgrade-card__corner upgrade-card__corner--br" aria-hidden="true" />
+                <GameIcon
+                  name={choice.id}
+                  size={148}
+                  strokeWidth={1.2}
+                  className="upgrade-card__watermark"
+                />
 
                 <span className="upgrade-card__top">
                   <span className="upgrade-card__icon" aria-hidden="true">
-                    {choice.icon}
+                    <GameIcon name={choice.id} size={30} />
                   </span>
                   <span className="upgrade-card__key" aria-hidden="true">
                     <kbd className="ui-key">{index + 1}</kbd>
@@ -104,7 +117,7 @@ export function UpgradeScreen({
                 </span>
 
                 <span className="upgrade-card__kind">
-                  {isRepair ? 'EMERGENCY REPAIR' : 'STAT MODULE'}
+                  {isRepair ? 'EMERGENCY REPAIR' : isRisk ? 'RISK MODULE' : 'STAT MODULE'}
                 </span>
                 <span className="upgrade-card__name">{label}</span>
                 <span className="upgrade-card__description">{choice.description}</span>

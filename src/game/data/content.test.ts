@@ -5,7 +5,7 @@ import { ENEMIES_BY_ID, ENEMY_LIST } from './enemies';
 import { MODULE_LIST, MODULES_BY_ID } from './modules';
 import { UPGRADE_LIST, UPGRADES_BY_ID } from './upgrades';
 import { WAVE_LIST, WAVES_BY_ID } from './waves';
-import { WEAPON_LIST, WEAPONS_BY_ID } from './weapons';
+import { WEAPON_LIST, WEAPONS_BY_ID, weaponColorForLevel } from './weapons';
 
 function expectIdsMatch<T extends { id: string }>(
   list: readonly T[],
@@ -19,7 +19,7 @@ function expectIdsMatch<T extends { id: string }>(
 
 describe('content counts', () => {
   it('matches the v0.4 content table sizes', () => {
-    expect(UPGRADE_LIST).toHaveLength(12);
+    expect(UPGRADE_LIST).toHaveLength(18);
     expect(MODULE_LIST).toHaveLength(10);
     expect(WEAPON_LIST).toHaveLength(5);
     expect(ENEMY_LIST).toHaveLength(6);
@@ -35,6 +35,7 @@ describe('balance baseline', () => {
     expect(BALANCE.startingCoins).toBe(15);
     expect(BALANCE.waveCount).toBe(8);
     expect(BALANCE.enemyCap).toBe(60);
+    expect(BALANCE.enemyHpMultiplier).toBe(0.8);
     expect(BALANCE.maxPickups).toBe(100);
     expect(BALANCE.maxWeapons).toBe(4);
     expect(BALANCE.maxWeaponLevel).toBe(3);
@@ -59,7 +60,7 @@ describe('characters', () => {
   it('matches the documented base stats and starting weapons', () => {
     const sunset = CHARACTERS_BY_ID.sunsetNeedle;
     expect(sunset.base).toEqual({
-      maxHp: 80,
+      maxHp: 65,
       armor: 0,
       moveSpeed: 235,
       damagePct: -0.05,
@@ -71,7 +72,7 @@ describe('characters', () => {
 
     const simon = CHARACTERS_BY_ID.simon;
     expect(simon.base).toEqual({
-      maxHp: 100,
+      maxHp: 90,
       armor: 1,
       moveSpeed: 220,
       damagePct: 0,
@@ -135,7 +136,7 @@ describe('weapons', () => {
       cooldown: 1.1,
       range: 300,
       projectileSpeed: 780,
-      spreadDeg: 40,
+      spreadDeg: 26,
     });
     expect(WEAPONS_BY_ID.arcHammer).toMatchObject({
       behavior: 'melee',
@@ -168,6 +169,29 @@ describe('weapons', () => {
   it('keeps weapon ids and map keys consistent', () => {
     expectIdsMatch(WEAPON_LIST, WEAPONS_BY_ID);
   });
+
+  it('gives every weapon a distinct color for each upgrade level', () => {
+    for (const def of WEAPON_LIST) {
+      const colors = [
+        weaponColorForLevel(def, 1),
+        weaponColorForLevel(def, 2),
+        weaponColorForLevel(def, 3),
+      ];
+      expect(colors[0]).toBe(def.color);
+      expect(colors[1]).toBe(def.upgradeColors[0]);
+      expect(colors[2]).toBe(def.upgradeColors[1]);
+      expect(new Set(colors).size).toBe(3);
+    }
+  });
+
+  it('clamps weapon color levels to the supported 1-3 range', () => {
+    const def = WEAPONS_BY_ID.pulseNailer;
+    expect(weaponColorForLevel(def, 0)).toBe(def.color);
+    expect(weaponColorForLevel(def, -4)).toBe(def.color);
+    expect(weaponColorForLevel(def, 2.9)).toBe(def.upgradeColors[0]);
+    expect(weaponColorForLevel(def, 99)).toBe(def.upgradeColors[1]);
+    expect(weaponColorForLevel(def, Number.NaN)).toBe(def.color);
+  });
 });
 
 describe('upgrades', () => {
@@ -185,6 +209,12 @@ describe('upgrades', () => {
       range: 3,
       coin: 3,
       knockback: 3,
+      overclock: 3,
+      overdrive: 3,
+      heavyArmor: 3,
+      greed: 3,
+      glassCannon: 2,
+      shortCircuit: 3,
     });
   });
 
@@ -196,6 +226,27 @@ describe('upgrades', () => {
     expect(UPGRADES_BY_ID.critdmg.effect).toEqual({ kind: 'critDamagePct', value: 0.2 });
     expect(UPGRADES_BY_ID.pickup.effect).toEqual({ kind: 'pickupRadius', value: 30 });
     expect(UPGRADES_BY_ID.coin.effect).toEqual({ kind: 'coinPct', value: 0.15 });
+  });
+
+  it('keeps risk cards paired with a penalty', () => {
+    for (const def of UPGRADE_LIST) {
+      expect(Boolean(def.risk)).toBe(Boolean(def.penalty));
+      if (def.risk) {
+        expect(def.penalty).toBeDefined();
+      }
+    }
+    expect(UPGRADES_BY_ID.overclock.penalty).toEqual({
+      kind: 'moveSpeedPct',
+      value: -0.06,
+    });
+    expect(UPGRADES_BY_ID.glassCannon.penalty).toEqual({
+      kind: 'damageTakenPct',
+      value: 0.15,
+    });
+    expect(UPGRADES_BY_ID.shortCircuit.penalty).toEqual({
+      kind: 'rangePct',
+      value: -0.12,
+    });
   });
 
   it('keeps upgrade ids and map keys consistent', () => {
@@ -248,7 +299,7 @@ describe('enemies', () => {
       behavior: 'boss',
       hp: 2200,
       speed: 55,
-      contactDamage: 18,
+      contactDamage: 22,
       coin: 60,
       radius: 42,
       spawnCost: 0,
@@ -268,7 +319,13 @@ describe('enemies', () => {
       elite: true,
       boss: false,
     });
-    expect(ENEMIES_BY_ID.biter).toMatchObject({ hp: 16, speed: 95, coin: 1, spawnCost: 1 });
+    expect(ENEMIES_BY_ID.biter).toMatchObject({
+      hp: 16,
+      speed: 95,
+      contactDamage: 6,
+      coin: 1,
+      spawnCost: 1,
+    });
     expect(ENEMIES_BY_ID.drone).toMatchObject({ hp: 10, speed: 145, coin: 1, spawnCost: 1 });
     expect(ENEMIES_BY_ID.charger).toMatchObject({ hp: 60, speed: 55, coin: 3, spawnCost: 3 });
     expect(ENEMIES_BY_ID.spitter).toMatchObject({ hp: 32, speed: 75, coin: 3, spawnCost: 3 });
@@ -287,32 +344,48 @@ describe('waves', () => {
     expect(WAVE_LIST.map((wave) => wave.wave)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
-  it('uses the documented spawn budget for waves 1-7 and none for the boss', () => {
-    for (const wave of WAVE_LIST) {
-      if (wave.boss) {
-        expect(wave.budget).toBe(0);
-        expect(wave.spawnWeights).toEqual({});
-        expect(wave.duration).toBeNull();
-        continue;
-      }
-      expect(wave.budget).toBe(BALANCE.baseWaveBudget + BALANCE.waveBudgetStep * wave.wave);
+  it('uses fixed target units and hp for waves 1-7 and none for the boss', () => {
+    const expected = [
+      { units: 18, hp: 233 },
+      { units: 26, hp: 317 },
+      { units: 26, hp: 541 },
+      { units: 21, hp: 988 },
+      { units: 31, hp: 1092 },
+      { units: 23, hp: 1404 },
+      { units: 26, hp: 1872 },
+    ];
+
+    for (let index = 0; index < 7; index += 1) {
+      const wave = WAVE_LIST[index];
+      const target = expected[index];
+      expect(wave).toBeDefined();
+      expect(target).toBeDefined();
+      if (!wave || !target) continue;
+      expect(wave.targetUnits).toBe(target.units);
+      expect(wave.targetHp).toBe(target.hp);
       const totalWeight = Object.values(wave.spawnWeights).reduce(
         (total, weight) => total + (weight ?? 0),
         0,
       );
       expect(totalWeight).toBe(100);
     }
+
+    const boss = WAVE_LIST[7];
+    expect(boss?.targetUnits).toBe(0);
+    expect(boss?.targetHp).toBe(0);
+    expect(boss?.spawnWeights).toEqual({});
+    expect(boss?.duration).toBeNull();
   });
 
-  it('schedules elites only on waves 4 and 6', () => {
-    expect(WAVE_LIST.map((wave) => wave.eliteAt)).toEqual([
+  it('schedules elites on waves 4, 6 and 7', () => {
+    expect(WAVE_LIST.map((wave) => wave.eliteAtPct)).toEqual([
       [],
       [],
       [],
-      [12],
+      [0.35],
       [],
-      [10, 26],
-      [],
+      [0.3],
+      [0.3, 0.65],
       [],
     ]);
   });

@@ -108,6 +108,72 @@ const knockback: UpgradeDef = {
   effect: { kind: 'knockbackPct', value: 0.25 },
 };
 
+const overclock: UpgradeDef = {
+  id: 'overclock',
+  name: '超频枪管',
+  description: '所有伤害 +20%；移动速度 -6%。',
+  maxStacks: 3,
+  icon: '⚡',
+  effect: { kind: 'damagePct', value: 0.2 },
+  penalty: { kind: 'moveSpeedPct', value: -0.06 },
+  risk: true,
+};
+
+const overdrive: UpgradeDef = {
+  id: 'overdrive',
+  name: '过载马达',
+  description: '攻击速度 +15%；移动速度 -8%。',
+  maxStacks: 3,
+  icon: '↯',
+  effect: { kind: 'attackSpeedPct', value: 0.15 },
+  penalty: { kind: 'moveSpeedPct', value: -0.08 },
+  risk: true,
+};
+
+const heavyArmor: UpgradeDef = {
+  id: 'heavyArmor',
+  name: '重型装甲',
+  description: '护甲 +4；移动速度 -6%。',
+  maxStacks: 3,
+  icon: '▣',
+  effect: { kind: 'armor', value: 4 },
+  penalty: { kind: 'moveSpeedPct', value: -0.06 },
+  risk: true,
+};
+
+const greed: UpgradeDef = {
+  id: 'greed',
+  name: '贪婪协议',
+  description: '金币获取 +30%；伤害 -8%。',
+  maxStacks: 3,
+  icon: '◈',
+  effect: { kind: 'coinPct', value: 0.3 },
+  penalty: { kind: 'damagePct', value: -0.08 },
+  risk: true,
+};
+
+const glassCannon: UpgradeDef = {
+  id: 'glassCannon',
+  name: '玻璃大炮',
+  description: '伤害 +25%；受到伤害 +15%。',
+  maxStacks: 2,
+  icon: '✧',
+  effect: { kind: 'damagePct', value: 0.25 },
+  penalty: { kind: 'damageTakenPct', value: 0.15 },
+  risk: true,
+};
+
+const shortCircuit: UpgradeDef = {
+  id: 'shortCircuit',
+  name: '短路协议',
+  description: '攻击速度 +20%；武器射程 -12%。',
+  maxStacks: 3,
+  icon: '⌇',
+  effect: { kind: 'attackSpeedPct', value: 0.2 },
+  penalty: { kind: 'rangePct', value: -0.12 },
+  risk: true,
+};
+
 export const UPGRADE_LIST: readonly UpgradeDef[] = [
   dmg,
   atk,
@@ -121,6 +187,12 @@ export const UPGRADE_LIST: readonly UpgradeDef[] = [
   range,
   coin,
   knockback,
+  overclock,
+  overdrive,
+  heavyArmor,
+  greed,
+  glassCannon,
+  shortCircuit,
 ];
 
 export const UPGRADES_BY_ID: Record<UpgradeId, UpgradeDef> = {
@@ -136,4 +208,10 @@ export const UPGRADES_BY_ID: Record<UpgradeId, UpgradeDef> = {
   range,
   coin,
   knockback,
+  overclock,
+  overdrive,
+  heavyArmor,
+  greed,
+  glassCannon,
+  shortCircuit,
 };

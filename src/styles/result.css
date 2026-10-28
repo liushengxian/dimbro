@@ -667,7 +667,9 @@
 .result-screen__buttons {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.6rem;
 }
 

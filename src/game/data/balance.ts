@@ -54,7 +54,8 @@ export const BALANCE = {
   lightTrailMoveSpeedPct: 0.1,
   lightTrailCritChance: 0.08,
 
-  simonDamageBonus: 0.2,
+  // 旧基线 +20%；提高到 +50% 后，相对旧基线的实际 DPS 为 1.5 / 1.2 = +25%。
+  simonDamageBonus: 0.5,
   simonBounceRatio: 0.25,
   simonBounceRange: 160,
   simonShieldCoins: 15,
@@ -87,9 +88,10 @@ export const BALANCE = {
   bossSoftEnrageAttackSpeedPct: 0.3,
 
   enemyHpGrowth: 0.12,
+  enemyHpMultiplier: 0.8,
   enemyDamageGrowth: 0.07,
-  baseWaveBudget: 8,
-  waveBudgetStep: 6,
+  spawnQueueHpJitterPct: 0.05,
+  spawnQueueWeightJitterPct: 0.25,
   spawnInterval: 0.9,
   spawnWarning: 0.6,
   spawnMinDistance: 260,

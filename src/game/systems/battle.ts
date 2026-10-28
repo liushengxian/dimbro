@@ -1,7 +1,7 @@
 import { BALANCE } from '../data/balance';
 import { CHARACTERS_BY_ID } from '../data/characters';
 import { ENEMIES_BY_ID } from '../data/enemies';
-import { WEAPONS_BY_ID } from '../data/weapons';
+import { WEAPONS_BY_ID, weaponColorForLevel } from '../data/weapons';
 import type {
   BattleWorld,
   DamageText,
@@ -20,8 +20,10 @@ import type {
   WeaponId,
   WeaponRuntime,
 } from '../types';
+import type { AudioCue } from '../audio';
 import type { Rng } from '../core/rng';
 import {
+  awardCoins,
   computePlayerStats,
   mitigateArmor,
   weaponCooldown,
@@ -82,10 +84,12 @@ export function createBattle(run: RunState, wave: WaveDef): BattleWorld {
     effects: [],
     damageTexts: [],
     spawnWarnings: [],
-    spawnBudget: Math.max(0, wave.budget - wave.eliteAt.length * 8),
+    spawnQueue: [],
+    spawnQueueBuilt: false,
+    spawnRemaining: 0,
     spawnTimer: 0.8,
     spawnLocked: false,
-    eliteSchedule: [...wave.eliteAt],
+    eliteSchedule: wave.eliteAtPct.map((pct) => (wave.duration ?? 0) * pct),
     bossId: null,
     bossDefeated: false,
     victoryTimer: null,
@@ -109,6 +113,7 @@ export function createBattle(run: RunState, wave: WaveDef): BattleWorld {
       damage: 0,
       duration: 0,
     },
+    audioCues: [],
     nextId: 1,
     fps: 60,
   };
@@ -207,6 +212,7 @@ function updatePassive(run: RunState, world: BattleWorld, dt: number, input: Bat
       if (world.passive.moveHold >= BALANCE.lightTrailMoveHold) {
         world.passive.lightTrailActive = true;
         world.passive.moveHold = BALANCE.lightTrailMoveHold;
+        queueAudio(world, 'focusOn');
         addEffect(world, 'ring', world.player.x, world.player.y, {
           radius: 34,
           life: 0.24,
@@ -221,6 +227,7 @@ function updatePassive(run: RunState, world: BattleWorld, dt: number, input: Bat
       if (world.passive.idleTime >= BALANCE.lightTrailIdleGrace) {
         world.passive.lightTrailActive = false;
         world.passive.idleTime = 0;
+        queueAudio(world, 'focusOff');
       }
     } else {
       world.passive.idleTime = 0;
@@ -313,13 +320,15 @@ function fireWeapon(
   const angle = Math.atan2(target.y - player.y, target.x - player.x);
   const muzzleX = player.x + Math.cos(angle) * (player.radius + 4);
   const muzzleY = player.y + Math.sin(angle) * (player.radius + 4);
+  const weaponColor = weaponColorForLevel(def, weapon.level);
 
   addEffect(world, 'muzzle', muzzleX, muzzleY, {
     radius: def.behavior === 'shotgun' ? 15 : 9,
     life: 0.12,
-    color: def.color,
+    color: weaponColor,
     angle,
   });
+  queueAudio(world, weaponAudioCue(def.id));
 
   if (def.behavior === 'melee') {
     const spread = (def.spreadDeg * Math.PI) / 180;
@@ -351,7 +360,7 @@ function fireWeapon(
     addEffect(world, 'arc', player.x, player.y, {
       radius: range,
       life: 0.2,
-      color: def.color,
+      color: weaponColor,
       angle,
     });
     return;
@@ -368,6 +377,21 @@ function fireWeapon(
   }
 
   spawnPlayerProjectile(world, run, stats, def, weapon.level, angle, range, attackId, rng);
+}
+
+function weaponAudioCue(id: WeaponId): AudioCue {
+  switch (id) {
+    case 'pulseNailer':
+      return 'weaponPulse';
+    case 'scatterRivets':
+      return 'weaponScatter';
+    case 'arcHammer':
+      return 'weaponMelee';
+    case 'returnGear':
+      return 'weaponGear';
+    case 'railSpike':
+      return 'weaponRail';
+  }
 }
 
 function spawnPlayerProjectile(
@@ -403,7 +427,7 @@ function spawnPlayerProjectile(
     maxLife: life,
     weaponId: def.id,
     attackId,
-    color: def.color,
+    color: weaponColorForLevel(def, level),
     returning: false,
     traveled: 0,
     maxDistance: range,
@@ -429,6 +453,7 @@ function tryResetTrigger(
   world.passive.resetActive = true;
   world.passive.resetRemaining = BALANCE.resetDuration;
   world.passive.resetMax = BALANCE.resetMaxDuration;
+  queueAudio(world, 'reset');
   addEffect(world, 'reset', world.player.x, world.player.y, {
     radius: 78,
     life: 0.45,
@@ -676,6 +701,7 @@ function updateSpitter(
       5,
       ENEMIES_BY_ID.spitter.accent,
     );
+    queueAudio(world, 'enemyShot');
     addEffect(world, 'muzzle', enemy.x, enemy.y, {
       radius: 10,
       life: 0.12,
@@ -709,6 +735,7 @@ function updateOverseer(
         ENEMIES_BY_ID.overseer.accent,
       );
     }
+    queueAudio(world, 'enemyBurst');
     addEffect(world, 'ring', enemy.x, enemy.y, {
       radius: 44,
       life: 0.3,
@@ -731,6 +758,7 @@ function updateBoss(world: BattleWorld, boss: EnemyEntity, dt: number, rng: Rng)
 
   if (!boss.softEnrage && world.elapsed > BALANCE.bossSoftEnrageSeconds) {
     boss.softEnrage = true;
+    queueAudio(world, 'bossEnrage');
     addEffect(world, 'ring', boss.x, boss.y, {
       radius: 100,
       life: 0.6,
@@ -790,7 +818,7 @@ function updateBoss(world: BattleWorld, boss: EnemyEntity, dt: number, rng: Rng)
     boss.burnTimer -= dt;
     if (boss.burnTimer <= 0) {
       boss.burnTimer = 0.12;
-      addHazard(boss.x, boss.y, 34, 2, 8, world);
+      addHazard(boss.x, boss.y, 34, 2, 10, world);
     }
     const hitWall = clampEnemy(boss);
     if (hitWall) {
@@ -859,6 +887,7 @@ function chooseBossAbility(world: BattleWorld, boss: EnemyEntity, rng: Rng): voi
   const ability = options[rng.int(0, options.length - 1)];
   boss.ability = ability;
   boss.dashCount = 0;
+  queueAudio(world, 'bossCast');
 
   if (ability === 'dash') {
     boss.mode = 'bossTelegraph';
@@ -896,7 +925,7 @@ function fireBossBarrage(world: BattleWorld, boss: EnemyEntity): void {
       boss.y,
       angle,
       180,
-      10 * waveDamageScale(world.wave),
+      12 * waveDamageScale(world.wave),
       7,
       '#FF8F5C',
     );
@@ -963,6 +992,131 @@ function updateSpawnWarnings(
   void run;
 }
 
+/**
+ * 按 targetUnits / targetHp 预生成本波杂兵队列。
+ *
+ * 在“恰好 targetUnits 个杂兵”的约束下，用 DP 选择各类型的数量，
+ * 使总血量尽量接近 targetHp 扣除精英后的剩余值；权重决定同血量下的
+ * 类型偏好。生成后打乱顺序，避免每波固定按类型成组出现。
+ */
+export function buildSpawnQueue(wave: WaveDef, rng: Rng): EnemyId[] {
+  const units = Math.max(0, Math.floor(wave.targetUnits));
+  if (units === 0) return [];
+
+  const hpScale =
+    (1 + BALANCE.enemyHpGrowth * (wave.wave - 1)) * BALANCE.enemyHpMultiplier;
+  const candidates: Array<{ id: EnemyId; hp: number; weight: number }> = [];
+  for (const [id, weight] of Object.entries(wave.spawnWeights)) {
+    const enemyId = id as EnemyId;
+    const def = ENEMIES_BY_ID[enemyId];
+    const safeWeight = weight ?? 0;
+    if (!def || safeWeight <= 0) continue;
+    candidates.push({
+      id: enemyId,
+      hp: Math.max(1, Math.round(def.hp * hpScale)),
+      weight: safeWeight,
+    });
+  }
+  if (candidates.length === 0) return [];
+
+  const eliteHp = wave.eliteAtPct.length * ENEMIES_BY_ID.overseer.hp * hpScale;
+  const trashHpTarget = Math.max(0, wave.targetHp - eliteHp);
+  const hpJitter =
+    1 - BALANCE.spawnQueueHpJitterPct + rng.next() * BALANCE.spawnQueueHpJitterPct * 2;
+  const hpTarget = Math.max(1, Math.round(trashHpTarget * hpJitter));
+  const weighted = candidates.map((candidate) => ({
+    ...candidate,
+    weight:
+      candidate.weight *
+      (1 -
+        BALANCE.spawnQueueWeightJitterPct +
+        rng.next() * BALANCE.spawnQueueWeightJitterPct * 2),
+  }));
+
+  const maxHp = Math.max(...weighted.map((candidate) => candidate.hp));
+  const maxSum = units * maxHp;
+  const unreachable = Number.NEGATIVE_INFINITY;
+  const dp: number[][] = Array.from({ length: units + 1 }, () =>
+    Array<number>(maxSum + 1).fill(unreachable),
+  );
+  const choice: number[][] = Array.from({ length: units + 1 }, () =>
+    Array<number>(maxSum + 1).fill(-1),
+  );
+  dp[0][0] = 0;
+
+  for (let used = 0; used < units; used += 1) {
+    for (let hp = 0; hp <= maxSum; hp += 1) {
+      const score = dp[used][hp];
+      if (score === unreachable) continue;
+      for (let index = 0; index < weighted.length; index += 1) {
+        const candidate = weighted[index];
+        if (!candidate) continue;
+        const nextHp = hp + candidate.hp;
+        if (nextHp > maxSum) continue;
+        const nextScore = score + candidate.weight;
+        if (nextScore > dp[used + 1][nextHp]) {
+          dp[used + 1][nextHp] = nextScore;
+          choice[used + 1][nextHp] = index;
+        }
+      }
+    }
+  }
+
+  let bestHp = -1;
+  let bestScore = unreachable;
+  for (let hp = 0; hp <= maxSum; hp += 1) {
+    const score = dp[units][hp];
+    if (score === unreachable) continue;
+    const distance = Math.abs(hp - hpTarget);
+    const bestDistance =
+      bestHp < 0 ? Number.POSITIVE_INFINITY : Math.abs(bestHp - hpTarget);
+    if (distance < bestDistance || (distance === bestDistance && score > bestScore)) {
+      bestHp = hp;
+      bestScore = score;
+    }
+  }
+
+  const counts = new Map<EnemyId, number>();
+  if (bestHp >= 0) {
+    let hp = bestHp;
+    for (let used = units; used > 0; used -= 1) {
+      const index = choice[used][hp];
+      if (index < 0) break;
+      const candidate = weighted[index];
+      if (!candidate) break;
+      counts.set(candidate.id, (counts.get(candidate.id) ?? 0) + 1);
+      hp -= candidate.hp;
+    }
+  }
+
+  const queue: EnemyId[] = [];
+  for (const candidate of weighted) {
+    const count = counts.get(candidate.id) ?? 0;
+    for (let index = 0; index < count; index += 1) queue.push(candidate.id);
+  }
+
+  // 极端配置下的兜底：用权重最高的类型补齐，保证队列长度稳定。
+  while (queue.length < units) {
+    let best = weighted[0];
+    for (const candidate of weighted) {
+      if (!best || candidate.weight > best.weight) best = candidate;
+    }
+    if (!best) break;
+    queue.push(best.id);
+  }
+
+  for (let index = queue.length - 1; index > 0; index -= 1) {
+    const swap = rng.int(0, index);
+    const value = queue[index];
+    const other = queue[swap];
+    if (value !== undefined && other !== undefined) {
+      queue[index] = other;
+      queue[swap] = value;
+    }
+  }
+  return queue;
+}
+
 function updateSpawner(
   run: RunState,
   world: BattleWorld,
@@ -986,7 +1140,12 @@ function updateSpawner(
     addSpawnWarning(world, point.x, point.y, 'overseer', BALANCE.spawnWarning);
   }
 
-  if (world.spawnBudget <= 0) return;
+  if (!world.spawnQueueBuilt) {
+    world.spawnQueue = buildSpawnQueue(wave, rng);
+    world.spawnQueueBuilt = true;
+    world.spawnRemaining = world.spawnQueue.length;
+  }
+  if (world.spawnQueue.length === 0) return;
 
   world.spawnTimer -= dt;
   if (world.spawnTimer > 0) return;
@@ -996,21 +1155,11 @@ function updateSpawner(
     return;
   }
 
-  const affordable = Object.entries(wave.spawnWeights)
-    .map(([id, weight]) => {
-      const def = ENEMIES_BY_ID[id as EnemyId];
-      return { value: def, weight: weight ?? 0 };
-    })
-    .filter((entry) => entry.value.spawnCost > 0 && entry.value.spawnCost <= world.spawnBudget);
-  if (affordable.length === 0) {
-    world.spawnBudget = 0;
-    return;
-  }
-
-  const def = rng.weightedPick(affordable);
-  world.spawnBudget -= def.spawnCost;
+  const defId = world.spawnQueue.shift();
+  if (!defId) return;
+  world.spawnRemaining = world.spawnQueue.length;
   const point = randomSpawnPoint(world, rng);
-  addSpawnWarning(world, point.x, point.y, def.id, BALANCE.spawnWarning);
+  addSpawnWarning(world, point.x, point.y, defId, BALANCE.spawnWarning);
   world.spawnTimer = world.elapsed < BALANCE.waveSpawnRampSeconds ? 1.5 : BALANCE.spawnInterval;
   void run;
 }
@@ -1066,7 +1215,8 @@ function spawnEnemy(
   x: number,
   y: number,
 ): EnemyEntity {
-  const hpScale = def.boss ? 1 : 1 + BALANCE.enemyHpGrowth * (wave - 1);
+  const hpScale =
+    (def.boss ? 1 : 1 + BALANCE.enemyHpGrowth * (wave - 1)) * BALANCE.enemyHpMultiplier;
   const damageScale = def.boss ? 1 : 1 + BALANCE.enemyDamageGrowth * (wave - 1);
   const enemy: EnemyEntity = {
     id: nextId(world),
@@ -1102,7 +1252,10 @@ function spawnEnemy(
     dead: false,
   };
   world.enemies.push(enemy);
-  if (def.boss) world.bossId = enemy.id;
+  if (def.boss) {
+    world.bossId = enemy.id;
+    queueAudio(world, 'bossIntro');
+  }
   addEffect(world, 'spawn', x, y, {
     radius: def.radius + 26,
     life: 0.4,
@@ -1139,11 +1292,12 @@ function updatePickups(
     pickup.y += pickup.vy * dt;
 
     if (distance < world.player.radius + 10) {
-      const awarded = Math.max(1, Math.round(pickup.value * (1 + stats.coinPct)));
+      const awarded = awardCoins(run, pickup.value, stats.coinPct);
       run.coins += awarded;
       run.totals.coinsEarned += awarded;
       world.waveStats.pickedCoins += awarded;
       pickup.dead = true;
+      queueAudio(world, 'coin');
       addEffect(world, 'ring', pickup.x, pickup.y, {
         radius: 12,
         life: 0.18,
@@ -1249,7 +1403,7 @@ function resolveContactDamage(run: RunState, world: BattleWorld): void {
     const distance = Math.hypot(enemy.x - world.player.x, enemy.y - world.player.y);
     if (distance <= enemy.radius + world.player.radius) {
       const raw =
-        enemy.boss && enemy.mode === 'bossDash' ? 20 : enemy.contactDamage;
+        enemy.boss && enemy.mode === 'bossDash' ? 24 : enemy.contactDamage;
       damagePlayer(world, run, raw, stats);
       break;
     }
@@ -1273,6 +1427,7 @@ export function damageEnemy(
   run.totals.bestHit = Math.max(run.totals.bestHit, actual);
   world.waveStats.damage += actual;
   addDamageText(world, enemy.x, enemy.y - enemy.radius, actual, options.crit ?? false);
+  queueAudio(world, options.crit ? 'crit' : 'hit');
 
   if (enemy.hp <= 0) {
     const overkill = Math.max(0, amount - hpBefore);
@@ -1288,6 +1443,7 @@ export function damageEnemy(
     enemy.ability = null;
     enemy.abilityCooldown = 1;
     enemy.dashCount = 0;
+    queueAudio(world, 'bossPhase');
     addEffect(world, 'ring', enemy.x, enemy.y, {
       radius: 130,
       life: 0.8,
@@ -1308,6 +1464,7 @@ function killEnemy(
   enemy.dead = true;
   run.totals.kills += 1;
   world.waveStats.kills += 1;
+  queueAudio(world, enemy.boss ? 'bossKill' : enemy.elite ? 'eliteKill' : 'kill');
   addEffect(world, 'kill', enemy.x, enemy.y, {
     radius: enemy.radius + (enemy.elite ? 24 : 10),
     life: 0.32,
@@ -1371,6 +1528,7 @@ function damagePlayer(
   if (run.characterId === 'simon' && run.shields > 0) {
     run.shields -= 1;
     world.player.iframes = BALANCE.simonShieldIframes;
+    queueAudio(world, 'shieldBreak');
     addEffect(world, 'shieldBreak', world.player.x, world.player.y, {
       radius: 40,
       life: 0.35,
@@ -1379,11 +1537,13 @@ function damagePlayer(
     return;
   }
 
-  const damage = mitigateArmor(rawDamage, stats.armor);
+  const reduced = mitigateArmor(rawDamage, stats.armor);
+  const damage = Math.max(BALANCE.minDamage, reduced * (1 + stats.damageTakenPct));
   world.player.hp = Math.max(0, world.player.hp - damage);
   run.currentHp = world.player.hp;
   world.player.iframes = BALANCE.playerIframes;
   world.player.hitFlash = 0.12;
+  queueAudio(world, 'playerHit');
   addDamageText(world, world.player.x, world.player.y - 24, damage, false);
 }
 
@@ -1541,6 +1701,11 @@ function addEffect(
     color: options.color,
     angle: options.angle ?? 0,
   });
+}
+
+function queueAudio(world: BattleWorld, cue: AudioCue): void {
+  if (world.audioCues.length >= 64) return;
+  world.audioCues.push(cue);
 }
 
 function addDamageText(

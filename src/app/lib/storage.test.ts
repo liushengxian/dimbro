@@ -130,6 +130,13 @@ describe('save data', () => {
     expect(readSave()).toEqual(save);
   });
 
+  it('defaults a missing coin remainder to zero for old saves', () => {
+    const raw = rawSave();
+    delete raw.run.coinRemainder;
+    writeRaw(raw);
+    expect(readSave()?.run.coinRemainder).toBe(0);
+  });
+
   it('has no save initially', () => {
     expect(readSave()).toBeNull();
     expect(hasSave()).toBe(false);
@@ -231,12 +238,16 @@ describe('save data', () => {
     }
   });
 
-  it('accepts currentHp up to the max HP implied by upgrades and modules', () => {
+  it('clamps legacy currentHp above the new max but rejects larger outliers', () => {
     const save = rawSave();
     save.run.upgrades = { hp: 1 };
+    save.run.currentHp = 80;
+    writeRaw(save);
+    expect(readSave()?.run.currentHp).toBe(80);
+
     save.run.currentHp = 95;
     writeRaw(save);
-    expect(readSave()?.run.currentHp).toBe(95);
+    expect(readSave()?.run.currentHp).toBe(80);
 
     save.run.currentHp = 96;
     writeRaw(save);
@@ -349,18 +360,26 @@ describe('save data', () => {
 });
 
 describe('settings', () => {
-  it('defaults to sound and shake enabled', () => {
-    expect(readSettings()).toEqual({ sound: true, shake: true });
+  it('defaults to music and sound disabled, shake enabled', () => {
+    expect(readSettings()).toEqual({ music: false, sound: false, shake: true });
     expect(readSettings()).not.toBe(readSettings());
   });
 
   it('writes versioned settings and reads them back', () => {
-    const settings: Settings = { sound: false, shake: true };
+    const settings: Settings = { music: true, sound: false, shake: true };
     writeSettings(settings);
 
     const stored: StoredSettings = JSON.parse(storage.getItem(SETTINGS_KEY)!);
-    expect(stored).toEqual({ version: 1, sound: false, shake: true });
+    expect(stored).toEqual({ version: 2, music: true, sound: false, shake: true });
     expect(readSettings()).toEqual(settings);
+  });
+
+  it('migrates v1 settings with music disabled', () => {
+    storage.setItem(
+      SETTINGS_KEY,
+      JSON.stringify({ version: 1, sound: true, shake: false }),
+    );
+    expect(readSettings()).toEqual({ music: false, sound: true, shake: false });
   });
 
   it('falls back for invalid settings', () => {
@@ -368,7 +387,9 @@ describe('settings', () => {
       '{bad json',
       'null',
       '[]',
+      { version: 3, music: false, sound: false, shake: false },
       { version: 2, sound: false, shake: false },
+      { version: 2, music: 'no', sound: false, shake: false },
       { version: 1, sound: 'no', shake: false },
       { version: 1, sound: true },
       { sound: false, shake: false },
@@ -376,12 +397,12 @@ describe('settings', () => {
 
     for (const value of invalid) {
       storage.setItem(SETTINGS_KEY, typeof value === 'string' ? value : JSON.stringify(value));
-      expect(readSettings()).toEqual({ sound: true, shake: true });
+      expect(readSettings()).toEqual({ music: false, sound: false, shake: true });
     }
   });
 
   it('does not use the run save key', () => {
-    writeSettings({ sound: false, shake: false });
+    writeSettings({ music: false, sound: false, shake: false });
     expect(storage.getItem(SAVE_KEY)).toBeNull();
     expect(storage.getItem(SETTINGS_KEY)).not.toBeNull();
   });
@@ -413,12 +434,12 @@ describe('missing or blocked localStorage', () => {
 
     expect(readSave()).toBeNull();
     expect(hasSave()).toBe(false);
-    expect(readSettings()).toEqual({ sound: true, shake: true });
+    expect(readSettings()).toEqual({ music: false, sound: false, shake: true });
     expect(hasSeenIntro()).toBe(false);
 
     expect(() => writeSave(makeSave())).not.toThrow();
     expect(() => clearSave()).not.toThrow();
-    expect(() => writeSettings({ sound: false, shake: false })).not.toThrow();
+    expect(() => writeSettings({ music: false, sound: false, shake: false })).not.toThrow();
     expect(() => markIntroSeen()).not.toThrow();
   });
 
@@ -427,12 +448,12 @@ describe('missing or blocked localStorage', () => {
 
     expect(readSave()).toBeNull();
     expect(hasSave()).toBe(false);
-    expect(readSettings()).toEqual({ sound: true, shake: true });
+    expect(readSettings()).toEqual({ music: false, sound: false, shake: true });
     expect(hasSeenIntro()).toBe(false);
 
     expect(() => writeSave(makeSave())).not.toThrow();
     expect(() => clearSave()).not.toThrow();
-    expect(() => writeSettings({ sound: false, shake: false })).not.toThrow();
+    expect(() => writeSettings({ music: false, sound: false, shake: false })).not.toThrow();
     expect(() => markIntroSeen()).not.toThrow();
   });
 });

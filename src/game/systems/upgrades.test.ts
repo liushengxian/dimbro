@@ -35,13 +35,20 @@ describe('upgrade choices', () => {
     expect(run.upgrades.hp).toBe(5);
     applyUpgrade(run, 'hp');
     expect(run.upgrades.hp).toBe(5);
-    expect(run.currentHp).toBeLessThanOrEqual(80 + 5 * 15);
+    expect(run.currentHp).toBeLessThanOrEqual(65 + 5 * 15);
+  });
+
+  it('never offers more than one risk card', () => {
+    for (let seed = 0; seed < 80; seed += 1) {
+      const choices = generateUpgradeChoices(createRun('sunsetNeedle', 1), createRng(seed));
+      expect(choices.filter((choice) => choice.risk).length).toBeLessThanOrEqual(1);
+    }
   });
 
   it('repairs 20% of max HP without exceeding the cap', () => {
     const run = createRun('sunsetNeedle', 1);
     run.currentHp = 1;
     applyUpgrade(run, 'repair');
-    expect(run.currentHp).toBe(1 + Math.floor(80 * BALANCE.repairHealPct));
+    expect(run.currentHp).toBe(1 + Math.floor(65 * BALANCE.repairHealPct));
   });
 });

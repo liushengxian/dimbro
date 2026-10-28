@@ -5,6 +5,7 @@ import { WEAPONS_BY_ID } from '../data/weapons';
 import type { PlayableCharacterId, PlayerStats, RunState } from '../types';
 import {
   applyMaxHpBonus,
+  awardCoins,
   baseStats,
   computePlayerStats,
   createRun,
@@ -48,7 +49,7 @@ describe('baseStats', () => {
   it('matches the v0.4 Sunset Needle baseline', () => {
     const stats = baseStats('sunsetNeedle');
     expect(stats).toEqual({
-      maxHp: 80,
+      maxHp: 65,
       armor: 0,
       damagePct: -0.05,
       attackSpeedPct: 0.2,
@@ -61,13 +62,14 @@ describe('baseStats', () => {
       coinPct: 0,
       knockbackPct: 0,
       regen: 0,
+      damageTakenPct: 0,
       cooldownMul: 1,
     });
   });
 
   it('matches the v0.4 Simon baseline', () => {
     const stats = baseStats('simon');
-    expect(stats.maxHp).toBe(100);
+    expect(stats.maxHp).toBe(90);
     expect(stats.armor).toBe(1);
     expect(stats.damagePct).toBe(0);
     expect(stats.attackSpeedPct).toBe(0);
@@ -80,12 +82,12 @@ describe('baseStats', () => {
 });
 
 describe('computePlayerStats', () => {
-  it('adds Simon permanent +20% damage linearly', () => {
+  it('adds Simon permanent +50% damage linearly', () => {
     const run = createRun('simon', 1);
-    expect(computePlayerStats(run).damagePct).toBeCloseTo(0.2);
+    expect(computePlayerStats(run).damagePct).toBeCloseTo(0.5);
 
     const boosted = computePlayerStats(run, { damagePct: 0.15 });
-    expect(boosted.damagePct).toBeCloseTo(0.35);
+    expect(boosted.damagePct).toBeCloseTo(0.65);
   });
 
   it('keeps Sunset Needle base -5% damage with no bonuses', () => {
@@ -96,7 +98,7 @@ describe('computePlayerStats', () => {
   it('sums upgrades, modules and runtime modifiers', () => {
     const stats = computePlayerStats(fullUpgradeRun());
 
-    expect(stats.maxHp).toBe(80 + 2 * 15 + 20);
+    expect(stats.maxHp).toBe(65 + 2 * 15 + 20);
     expect(stats.armor).toBe(2 * 2 + 2);
     expect(stats.damagePct).toBeCloseTo(-0.05 + 0.2 + 0.24);
     expect(stats.attackSpeedPct).toBeCloseTo(0.2 + 0.08 + 0.1);
@@ -125,6 +127,18 @@ describe('computePlayerStats', () => {
     expect(stats.critChance).toBeCloseTo(0.16);
     expect(stats.damagePct).toBeCloseTo(0.1);
     expect(stats.attackSpeedPct).toBeCloseTo(0.3);
+  });
+
+  it('applies risk card upside and penalty together', () => {
+    const run = createRun('sunsetNeedle', 1);
+    run.upgrades = { overclock: 1, glassCannon: 2, shortCircuit: 1 };
+    const stats = computePlayerStats(run);
+
+    expect(stats.damagePct).toBeCloseTo(-0.05 + 0.2 + 0.5);
+    expect(stats.damageTakenPct).toBeCloseTo(0.3);
+    expect(stats.moveSpeedPct).toBeCloseTo(-0.06);
+    expect(stats.attackSpeedPct).toBeCloseTo(0.2 + 0.2);
+    expect(stats.rangePct).toBeCloseTo(-0.12);
   });
 
   it('caps attack speed at +150%', () => {
@@ -247,6 +261,18 @@ describe('weaponCooldown', () => {
   });
 });
 
+describe('awardCoins', () => {
+  it('carries fractional coin bonuses across pickups', () => {
+    const run = createRun('sunsetNeedle', 1);
+    let total = 0;
+    for (let index = 0; index < 10; index += 1) {
+      total += awardCoins(run, 1, 0.3);
+    }
+    expect(total).toBe(13);
+    expect(run.coinRemainder).toBeCloseTo(0);
+  });
+});
+
 describe('mitigateArmor', () => {
   it('applies diminishing armor reduction', () => {
     expect(mitigateArmor(10, 0)).toBe(10);
@@ -270,7 +296,8 @@ describe('createRun', () => {
       characterId: 'sunsetNeedle',
       wave: 1,
       coins: BALANCE.startingCoins,
-      currentHp: 80,
+      coinRemainder: 0,
+      currentHp: 65,
       shields: 0,
       upgrades: {},
       modules: {},
@@ -287,9 +314,9 @@ describe('createRun', () => {
 
   it('creates a fresh Simon run with his starting weapon', () => {
     const run = createRun('simon', 55);
-    expect(run.currentHp).toBe(100);
+    expect(run.currentHp).toBe(90);
     expect(run.weapons).toEqual([{ id: 'scatterRivets', level: 1, paid: 30 }]);
-    expect(computePlayerStats(run).damagePct).toBeCloseTo(0.2);
+    expect(computePlayerStats(run).damagePct).toBeCloseTo(0.5);
   });
 
   it('returns independent objects for each run', () => {
@@ -313,24 +340,24 @@ describe('applyMaxHpBonus', () => {
     run.upgrades = { hp: 1 };
     applyMaxHpBonus(run, 15);
     expect(run.currentHp).toBe(55);
-    expect(computePlayerStats(run).maxHp).toBe(95);
+    expect(computePlayerStats(run).maxHp).toBe(80);
   });
 
   it('caps at the maximum instead of healing to full', () => {
     const run = createRun('sunsetNeedle', 1);
-    run.currentHp = 90;
+    run.currentHp = 80;
     run.upgrades = { hp: 1 };
     applyMaxHpBonus(run, 15);
-    expect(run.currentHp).toBe(95);
+    expect(run.currentHp).toBe(80);
   });
 
   it('works with module max-HP bonuses', () => {
     const run = createRun('simon', 1);
-    run.currentHp = 100;
+    run.currentHp = 90;
     run.modules = { emergencyBattery: 1 };
     applyMaxHpBonus(run, 20);
-    expect(run.currentHp).toBe(120);
-    expect(computePlayerStats(run).maxHp).toBe(120);
+    expect(run.currentHp).toBe(110);
+    expect(computePlayerStats(run).maxHp).toBe(110);
   });
 });
 

@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import type { JSX } from 'react';
 import { Button } from '../components/Button';
 import { Icon } from '../components/Icon';
+import { LeaderboardDialog } from '../components/LeaderboardDialog';
 import { CHARACTERS_BY_ID } from '../../game/data/characters';
 import type { ResultView } from '../../game/types';
 import { cn } from '../lib/cn';
@@ -28,6 +30,7 @@ function formatNumber(value: number): string {
 }
 
 export function ResultScreen({ result, onRestart, onHome }: ResultScreenProps): JSX.Element {
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const character = CHARACTERS_BY_ID[result.characterId];
   const victory = result.victory;
   const hp = `${Math.max(0, Math.ceil(result.remainingHp))} / ${Math.round(result.maxHp)}`;
@@ -216,6 +219,14 @@ export function ResultScreen({ result, onRestart, onHome }: ResultScreenProps): 
             <Button
               variant="secondary"
               size="lg"
+              onClick={() => setLeaderboardOpen(true)}
+              leadingIcon={<Icon name="trophy" size={16} />}
+            >
+              上传战绩
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
               onClick={onHome}
               leadingIcon={<Icon name="arrow-left" size={16} />}
             >
@@ -224,6 +235,12 @@ export function ResultScreen({ result, onRestart, onHome }: ResultScreenProps): 
           </div>
         </footer>
       </div>
+
+      <LeaderboardDialog
+        open={leaderboardOpen}
+        result={result}
+        onClose={() => setLeaderboardOpen(false)}
+      />
     </main>
   );
 }

@@ -4,6 +4,7 @@ import './styles/global.css';
 import './styles/components.css';
 import './styles/canvas.css';
 import './styles/app.css';
+import './styles/game-ui.css';
 
 const root = document.getElementById('root');
 if (!root) {

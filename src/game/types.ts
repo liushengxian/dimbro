@@ -1,3 +1,5 @@
+import type { AudioCue } from './audio';
+
 export type CharacterId = 'sunsetNeedle' | 'simon' | 'junyi';
 export type PlayableCharacterId = Exclude<CharacterId, 'junyi'>;
 
@@ -20,7 +22,13 @@ export type UpgradeId =
   | 'pickup'
   | 'range'
   | 'coin'
-  | 'knockback';
+  | 'knockback'
+  | 'overclock'
+  | 'overdrive'
+  | 'heavyArmor'
+  | 'greed'
+  | 'glassCannon'
+  | 'shortCircuit';
 
 export type ModuleId =
   | 'coolingFan'
@@ -98,6 +106,8 @@ export interface WeaponDef {
   knockback: number;
   icon: string;
   color: string;
+  /** Lv.2 / Lv.3 的专属颜色，用于让武器升级在战斗中一眼可见。 */
+  upgradeColors: readonly [string, string];
 }
 
 export type StatEffectKind =
@@ -113,6 +123,7 @@ export type StatEffectKind =
   | 'rangePct'
   | 'coinPct'
   | 'knockbackPct'
+  | 'damageTakenPct'
   | 'cooldownMul';
 
 export interface StatEffect {
@@ -128,6 +139,10 @@ export interface UpgradeDef {
   maxStacks: number;
   icon: string;
   effect: StatEffect;
+  /** 风险卡的负面效果，与 effect 同时生效。 */
+  penalty?: StatEffect;
+  /** 风险卡在三选一中每轮最多出现 1 张，并在 UI 上单独标记。 */
+  risk?: boolean;
 }
 
 export interface ModuleDef {
@@ -163,9 +178,13 @@ export interface WaveDef {
   reward: number;
   label: string;
   hint: string;
-  budget: number;
+  /** 预生成队列中的杂兵数量；精英不占用该数量。 */
+  targetUnits: number;
+  /** 本波目标总血量，包含精英；队列按扣除精英后的杂兵血量生成。 */
+  targetHp: number;
   spawnWeights: Partial<Record<EnemyId, number>>;
-  eliteAt: number[];
+  /** 精英出现时机，按波次时长归一化到 0–1。 */
+  eliteAtPct: number[];
   boss: boolean;
 }
 
@@ -188,6 +207,8 @@ export interface RunState {
   characterId: PlayableCharacterId;
   wave: number;
   coins: number;
+  /** 金币加成的小数余量，保证 +15% / +30% 在 1 金币掉落上也能长期生效。 */
+  coinRemainder: number;
   currentHp: number;
   shields: number;
   upgrades: Partial<Record<UpgradeId, number>>;
@@ -217,10 +238,12 @@ export interface PlayerStats {
   coinPct: number;
   knockbackPct: number;
   regen: number;
+  damageTakenPct: number;
   cooldownMul: number;
 }
 
 export interface Settings {
+  music: boolean;
   sound: boolean;
   shake: boolean;
 }
@@ -426,7 +449,11 @@ export interface BattleWorld {
   effects: EffectEntity[];
   damageTexts: DamageText[];
   spawnWarnings: SpawnWarning[];
-  spawnBudget: number;
+  /** 本波预生成的杂兵刷怪队列。 */
+  spawnQueue: EnemyId[];
+  spawnQueueBuilt: boolean;
+  /** 队列中剩余未刷出的杂兵数量，用于调试面板。 */
+  spawnRemaining: number;
   spawnTimer: number;
   spawnLocked: boolean;
   eliteSchedule: number[];
@@ -437,6 +464,7 @@ export interface BattleWorld {
   rolledAttacks: Set<number>;
   passive: PassiveRuntime;
   waveStats: WaveStats;
+  audioCues: AudioCue[];
   nextId: number;
   fps: number;
 }
@@ -497,6 +525,7 @@ export interface UpgradeChoice {
   stacks: number;
   maxStacks: number;
   type: 'upgrade' | 'repair';
+  risk: boolean;
 }
 
 export interface ShopOfferView {
@@ -510,6 +539,8 @@ export interface ShopOfferView {
   canAfford: boolean;
   icon: string;
   level?: number;
+  /** 武器当前 / 升级后等级对应的颜色；模块无颜色。 */
+  color?: string;
   detail: string;
 }
 
@@ -545,7 +576,7 @@ export interface DebugState {
   playerProjectiles: number;
   enemyProjectiles: number;
   pickups: number;
-  spawnBudget: number;
+  spawnRemaining: number;
   seed: number;
   wave: number;
   phase: GamePhase;
@@ -587,7 +618,8 @@ export type PurchaseResult =
   | { status: 'error'; message: string };
 
 export interface StoredSettings {
-  version: 1;
+  version: 2;
+  music: boolean;
   sound: boolean;
   shake: boolean;
 }

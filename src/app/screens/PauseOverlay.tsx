@@ -10,8 +10,10 @@ export interface PauseOverlayProps {
   onResume: () => void;
   onRestart: () => void;
   onHome: () => void;
+  musicEnabled: boolean;
   soundEnabled: boolean;
   shakeEnabled: boolean;
+  onMusicChange: (v: boolean) => void;
   onSoundChange: (v: boolean) => void;
   onShakeChange: (v: boolean) => void;
 }
@@ -20,8 +22,10 @@ export function PauseOverlay({
   onResume,
   onRestart,
   onHome,
+  musicEnabled,
   soundEnabled,
   shakeEnabled,
+  onMusicChange,
   onSoundChange,
   onShakeChange,
 }: PauseOverlayProps): JSX.Element {
@@ -83,6 +87,12 @@ export function PauseOverlay({
 
         <div className="pause-overlay__settings">
           <p className="eyebrow pause-overlay__section-title">LOCAL SETTINGS</p>
+          <Toggle
+            label="背景音乐"
+            description="程序化工业氛围循环；暂停时自动降低音量。"
+            checked={musicEnabled}
+            onChange={onMusicChange}
+          />
           <Toggle
             label="音效"
             description="程序化合成音效；关闭后不影响战斗判定。"
