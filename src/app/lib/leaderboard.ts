@@ -35,6 +35,14 @@ export interface LeaderboardSubmitInput {
   elapsedSeconds: number;
 }
 
+export interface LocalMigrationResult {
+  uploaded: number;
+  skipped: number;
+  failed: number;
+  remaining: number;
+  error?: string;
+}
+
 interface RemoteConfig {
   url: string;
   anonKey: string;
@@ -87,17 +95,11 @@ function getStorage(): Storage | null {
   }
 }
 
-function getEnv(): Record<string, string | undefined> {
-  const meta = import.meta as ImportMeta & {
-    env?: Record<string, string | undefined>;
-  };
-  return meta.env ?? {};
-}
-
 function getRemoteConfig(): RemoteConfig | null {
-  const env = getEnv();
-  const url = (env.VITE_SUPABASE_URL ?? '').trim().replace(/\/+$/, '');
-  const anonKey = (env.VITE_SUPABASE_ANON_KEY ?? '').trim();
+  // 必须静态书写 import.meta.env.VITE_XXX：Vite 只在构建时替换这种访问方式。
+  // 先取出 import.meta.env 再动态取值不会注入变量，线上会静默退回本地榜。
+  const url = (import.meta.env.VITE_SUPABASE_URL ?? '').trim().replace(/\/+$/, '');
+  const anonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY ?? '').trim();
   if (!/^https?:\/\//i.test(url) || anonKey.length === 0) return null;
   return { url, anonKey };
 }
@@ -295,6 +297,11 @@ function readLocalEntries(): LeaderboardEntry[] {
   } catch {
     return [];
   }
+}
+
+/** 当前浏览器里尚未迁走的本地战绩条数。 */
+export function getLocalLeaderboardCount(): number {
+  return readLocalEntries().length;
 }
 
 function writeLocalEntries(entries: LeaderboardEntry[]): void {
@@ -498,4 +505,85 @@ export async function submitLeaderboard(
     throw new Error('排行榜写入未返回记录，请检查 Supabase 的 RLS 配置。');
   }
   return created;
+}
+
+function migrationKey(
+  entry: Pick<
+    LeaderboardEntry,
+    'nickname' | 'characterId' | 'victory' | 'wave' | 'kills' | 'damage' | 'elapsedSeconds'
+  >,
+): string {
+  return [
+    entry.nickname,
+    entry.characterId,
+    entry.victory ? '1' : '0',
+    entry.wave,
+    entry.kills,
+    entry.damage,
+    entry.elapsedSeconds,
+  ].join('|');
+}
+
+/**
+ * 把当前浏览器里的本地榜迁到 Supabase。
+ *
+ * 以原始战绩字段去重，已存在的记录直接跳过；上传成功的记录会从本地移除，
+ * 失败的继续保留以便重试。逐条上传，避免一条脏数据导致整批失败。
+ */
+export async function migrateLocalLeaderboard(): Promise<LocalMigrationResult> {
+  if (getRemoteConfig() === null) {
+    throw new Error('当前未连接在线排行榜，无法上传本地战绩。');
+  }
+
+  const localEntries = readLocalEntries();
+  if (localEntries.length === 0) {
+    return { uploaded: 0, skipped: 0, failed: 0, remaining: 0 };
+  }
+
+  const remoteEntries = await loadLeaderboard(1000);
+  const known = new Set(remoteEntries.map(migrationKey));
+
+  let uploaded = 0;
+  let skipped = 0;
+  let failed = 0;
+  let firstError: string | undefined;
+  const remaining: LeaderboardEntry[] = [];
+
+  for (const entry of localEntries) {
+    const key = migrationKey(entry);
+    if (known.has(key)) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      await submitLeaderboard({
+        nickname: entry.nickname,
+        characterId: entry.characterId,
+        victory: entry.victory,
+        wave: entry.wave,
+        kills: entry.kills,
+        damage: entry.damage,
+        elapsedSeconds: entry.elapsedSeconds,
+      });
+      known.add(key);
+      uploaded += 1;
+    } catch (error) {
+      failed += 1;
+      remaining.push(entry);
+      if (firstError === undefined) {
+        firstError = error instanceof Error ? error.message : '本地榜上传失败。';
+      }
+    }
+  }
+
+  if (uploaded > 0 || skipped > 0) {
+    try {
+      writeLocalEntries(remaining);
+    } catch {
+      // 战绩已经在线，清理本地缓存失败不应把迁移判为失败。
+    }
+  }
+
+  return { uploaded, skipped, failed, remaining: remaining.length, error: firstError };
 }

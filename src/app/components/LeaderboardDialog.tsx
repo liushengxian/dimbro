@@ -4,9 +4,11 @@ import type { ResultView } from '../../game/types';
 import {
   buildSubmission,
   getLeaderboardSource,
+  getLocalLeaderboardCount,
   hasSubmittedFingerprint,
   loadLeaderboard,
   markFingerprintSubmitted,
+  migrateLocalLeaderboard,
   normalizeNickname,
   readNickname,
   resultFingerprint,
@@ -63,6 +65,12 @@ export function LeaderboardDialog({
   const [notice, setNotice] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [localCount, setLocalCount] = useState(0);
+  const [migrating, setMigrating] = useState(false);
+  const [migrationMessage, setMigrationMessage] = useState<{
+    tone: 'notice' | 'error';
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -95,7 +103,9 @@ export function LeaderboardDialog({
     setNotice(null);
     setHighlightId(null);
     setSubmitted(fingerprint !== null && hasSubmittedFingerprint(fingerprint));
-  }, [open, fingerprint]);
+    setLocalCount(source === 'remote' ? getLocalLeaderboardCount() : 0);
+    setMigrationMessage(null);
+  }, [open, fingerprint, source]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -124,6 +134,34 @@ export function LeaderboardDialog({
       setSubmitError(errorMessage(reason));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleMigrate(): Promise<void> {
+    if (migrating) return;
+
+    setMigrating(true);
+    setMigrationMessage(null);
+
+    try {
+      const result = await migrateLocalLeaderboard();
+      setLocalCount(getLocalLeaderboardCount());
+      setReloadKey((value) => value + 1);
+
+      const parts: string[] = [];
+      if (result.uploaded > 0) parts.push(`已上传 ${result.uploaded} 条`);
+      if (result.skipped > 0) parts.push(`${result.skipped} 条已存在`);
+      if (result.failed > 0) parts.push(`${result.failed} 条失败`);
+      if (parts.length === 0) parts.push('本地榜已处理完成');
+
+      setMigrationMessage({
+        tone: result.failed > 0 ? 'error' : 'notice',
+        text: `${parts.join('，')}${result.error ? `（${result.error}）` : ''}`,
+      });
+    } catch (reason: unknown) {
+      setMigrationMessage({ tone: 'error', text: errorMessage(reason) });
+    } finally {
+      setMigrating(false);
     }
   }
 
@@ -166,6 +204,16 @@ export function LeaderboardDialog({
           >
             刷新
           </Button>
+          {source === 'remote' && localCount > 0 ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleMigrate}
+              disabled={migrating}
+            >
+              {migrating ? '上传中…' : `上传本地榜 (${localCount})`}
+            </Button>
+          ) : null}
         </div>
 
         {result !== null && fingerprint !== null ? (
@@ -197,6 +245,18 @@ export function LeaderboardDialog({
         {submitError ? (
           <p className="leaderboard__error" role="alert">
             {submitError}
+          </p>
+        ) : null}
+        {migrationMessage ? (
+          <p
+            className={
+              migrationMessage.tone === 'notice'
+                ? 'leaderboard__notice'
+                : 'leaderboard__error'
+            }
+            role={migrationMessage.tone === 'notice' ? 'status' : 'alert'}
+          >
+            {migrationMessage.text}
           </p>
         ) : null}
         {notice ? (

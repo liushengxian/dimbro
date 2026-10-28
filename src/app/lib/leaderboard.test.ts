@@ -5,7 +5,9 @@ import {
   buildSubmission,
   computeLeaderboardScore,
   getLeaderboardSource,
+  getLocalLeaderboardCount,
   loadLeaderboard,
+  migrateLocalLeaderboard,
   normalizeNickname,
   parseLeaderboardRows,
   submitLeaderboard,
@@ -80,6 +82,24 @@ const LOCAL_INPUT: LeaderboardSubmitInput = {
   damage: 20_000,
   elapsedSeconds: 240,
 };
+
+const LOCAL_KEY = 'dimbro.leaderboard.local.v1';
+
+function makeLocalEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'local-1',
+    nickname: '本地测试',
+    characterId: 'simon',
+    victory: false,
+    wave: 4,
+    kills: 50,
+    damage: 20_000,
+    elapsedSeconds: 240,
+    score: 4_050_020,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
   storage = new MemoryStorage();
@@ -323,5 +343,101 @@ describe('remote leaderboard', () => {
       damage: 20_000,
       elapsed_seconds: 240,
     });
+  });
+
+  it('migrates local rows once and skips rows already on the server', async () => {
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://demo.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-key');
+
+    storage.setItem(
+      LOCAL_KEY,
+      JSON.stringify([
+        makeLocalEntry(),
+        makeLocalEntry({
+          id: 'local-2',
+          nickname: '另一名玩家',
+          wave: 5,
+          kills: 80,
+          damage: 30_000,
+          elapsedSeconds: 300,
+          score: 5_080_030,
+        }),
+      ]),
+    );
+    expect(getLocalLeaderboardCount()).toBe(2);
+
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              id: 1,
+              nickname: '本地测试',
+              character_id: 'simon',
+              victory: false,
+              wave: 4,
+              kills: 50,
+              damage: 20_000,
+              elapsed_seconds: 240,
+              score: 4_050_020,
+              created_at: '2026-01-02T00:00:00.000Z',
+            },
+          ]),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              id: 2,
+              nickname: '另一名玩家',
+              character_id: 'simon',
+              victory: false,
+              wave: 5,
+              kills: 80,
+              damage: 30_000,
+              elapsed_seconds: 300,
+              score: 5_080_030,
+              created_at: '2026-01-02T00:00:01.000Z',
+            },
+          ]),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+
+    const result = await migrateLocalLeaderboard();
+
+    expect(result).toEqual({ uploaded: 1, skipped: 1, failed: 0, remaining: 0 });
+    expect(getLocalLeaderboardCount()).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' });
+  });
+
+  it('keeps failed local rows for a retry', async () => {
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://demo.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'anon-key');
+
+    storage.setItem(LOCAL_KEY, JSON.stringify([makeLocalEntry()]));
+
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: '写满了' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+    const result = await migrateLocalLeaderboard();
+
+    expect(result).toMatchObject({ uploaded: 0, skipped: 0, failed: 1, remaining: 1 });
+    expect(getLocalLeaderboardCount()).toBe(1);
   });
 });
