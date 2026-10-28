@@ -314,6 +314,7 @@ export function App(): JSX.Element {
         <UpgradeScreen
           choices={snapshot.upgradeChoices}
           coins={snapshot.coins}
+          baggedCoins={snapshot.baggedCoins}
           wave={snapshot.wave}
           onChoose={handleChooseUpgrade}
           onSkip={handleSkipUpgrade}
@@ -353,7 +354,10 @@ function DebugOverlay({ snapshot }: { snapshot: SessionSnapshot }): JSX.Element 
       <span>WAVE {snapshot.debug.wave}</span>
       <span>ENEMY {snapshot.debug.enemies}</span>
       <span>BULLET {snapshot.debug.playerProjectiles}/{snapshot.debug.enemyProjectiles}</span>
-      <span>SPAWNS {snapshot.debug.spawnRemaining}</span>
+      <span>
+        SPAWNS{' '}
+        {Number.isFinite(snapshot.debug.spawnRemaining) ? snapshot.debug.spawnRemaining : '∞'}
+      </span>
       <span>SEED {snapshot.debug.seed}</span>
       <span>[?debug=1]</span>
     </aside>

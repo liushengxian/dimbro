@@ -6,6 +6,8 @@ export const BALANCE = {
   worldWidth: 1600,
   worldHeight: 900,
   margin: 24,
+  /** Boss 从上方门口登场，避免与站在场地中央的玩家重叠。 */
+  bossSpawnY: 170,
 
   startingCoins: 15,
   waveCount: 8,
@@ -90,10 +92,9 @@ export const BALANCE = {
   enemyHpGrowth: 0.12,
   enemyHpMultiplier: 0.8,
   enemyDamageGrowth: 0.07,
-  spawnQueueHpJitterPct: 0.05,
-  spawnQueueWeightJitterPct: 0.25,
-  spawnInterval: 0.9,
   spawnWarning: 0.6,
   spawnMinDistance: 260,
   waveSpawnRampSeconds: 3,
+  /** 每波开场 3 秒内使用更慢的间隔，给玩家调整站位的时间。 */
+  spawnRampInterval: 1.5,
 } as const;

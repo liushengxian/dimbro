@@ -118,9 +118,10 @@ describe('save data', () => {
     expect(JSON.parse(storage.getItem(SAVE_KEY)!)).toEqual(save);
   });
 
-  it('restores upgrades, modules and Simon shields', () => {
+  it('restores upgrades, modules, bagged coins and Simon shields', () => {
     const run = createRun('simon', 99);
     run.shields = 2;
+    run.baggedCoins = 11;
     run.upgrades = { hp: 2, dmg: 3 };
     run.modules = { emergencyBattery: 1, spareMagazine: 2 };
     run.currentHp = 140;
@@ -135,6 +136,13 @@ describe('save data', () => {
     delete raw.run.coinRemainder;
     writeRaw(raw);
     expect(readSave()?.run.coinRemainder).toBe(0);
+  });
+
+  it('defaults a missing bag to zero for old saves', () => {
+    const raw = rawSave();
+    delete raw.run.baggedCoins;
+    writeRaw(raw);
+    expect(readSave()?.run.baggedCoins).toBe(0);
   });
 
   it('has no save initially', () => {
@@ -211,7 +219,7 @@ describe('save data', () => {
     }
   });
 
-  it('validates wave, coins, currentHp and shields', () => {
+  it('validates wave, coins, bag, currentHp and shields', () => {
     const cases: Array<[string, unknown]> = [
       ['wave', 0],
       ['wave', 9],
@@ -220,6 +228,9 @@ describe('save data', () => {
       ['coins', -1],
       ['coins', 1.5],
       ['coins', '10'],
+      ['baggedCoins', -1],
+      ['baggedCoins', 1.5],
+      ['baggedCoins', '3'],
       ['currentHp', 0],
       ['currentHp', -5],
       ['currentHp', 81],

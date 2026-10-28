@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createRun } from './progression';
-import { buildSpawnQueue, createBattle, updateBattle, type BattleInput } from './battle';
+import { createBattle, updateBattle, type BattleInput } from './battle';
 import { WAVES_BY_ID } from '../data/waves';
-import { ENEMIES_BY_ID } from '../data/enemies';
 import { createRng } from '../core/rng';
 import { BALANCE } from '../data/balance';
 
@@ -63,6 +62,10 @@ describe('battle simulation', () => {
     expect(boss?.invuln).toBeGreaterThan(0);
     expect(world.enemies).toHaveLength(1);
     expect(world.audioCues).toContain('bossIntro');
+    if (!boss) throw new Error('boss missing');
+    const distance = Math.hypot(boss.x - world.player.x, boss.y - world.player.y);
+    expect(distance).toBeGreaterThan(boss.radius + world.player.radius + 120);
+    expect(boss.y).toBeLessThan(world.player.y);
   });
 
   it('culls out-of-bounds projectiles and keeps counts bounded', () => {
@@ -97,25 +100,21 @@ describe('battle simulation', () => {
     expect(world.pickups.length).toBeLessThanOrEqual(BALANCE.maxPickups);
   });
 
-  it('pre-generates a stable queue with the target unit count and hp', () => {
-    for (const wave of Object.values(WAVES_BY_ID)) {
-      const seed = 1000 + wave.wave;
-      const queue = buildSpawnQueue(wave, createRng(seed));
-      expect(queue).toHaveLength(wave.targetUnits);
-      expect(buildSpawnQueue(wave, createRng(seed))).toEqual(queue);
+  it('keeps spawning for the whole wave instead of exhausting a fixed quota', () => {
+    const run = createRun('sunsetNeedle', 41);
+    run.weapons = [];
+    const wave = WAVES_BY_ID[4];
+    const world = createBattle(run, wave);
+    const rng = createRng(1234);
 
-      if (wave.boss) continue;
-      const hpScale =
-        (1 + BALANCE.enemyHpGrowth * (wave.wave - 1)) * BALANCE.enemyHpMultiplier;
-      const eliteHp = wave.eliteAtPct.length * ENEMIES_BY_ID.overseer.hp * hpScale;
-      const trashHp = queue.reduce(
-        (total, id) => total + ENEMIES_BY_ID[id].hp * hpScale,
-        0,
-      );
-      const target = Math.max(0, wave.targetHp - eliteHp);
-      const tolerance = Math.max(24, target * 0.1);
-      expect(Math.abs(trashHp - target)).toBeLessThanOrEqual(tolerance);
+    for (let step = 0; step < 60 * 30; step += 1) {
+      world.player.iframes = 999;
+      updateBattle(run, world, wave, 1 / 60, idle, rng);
     }
+
+    expect(world.enemies.length).toBeGreaterThan(30);
+    expect(world.enemies.length).toBeLessThanOrEqual(BALANCE.enemyCap);
+    expect(world.waveStats.kills).toBe(0);
   });
 
   it('applies damage-taken penalties from risk cards', () => {
@@ -137,13 +136,12 @@ describe('battle simulation', () => {
     expect(world.player.hp).toBeCloseTo(65 - 13);
   });
 
-  it('builds the queue on the first update and exposes remaining spawns', () => {
+  it('starts the first spawn timer immediately and keeps it at the wave cadence', () => {
     const run = createRun('sunsetNeedle', 21);
     const world = createBattle(run, WAVES_BY_ID[3]);
-    expect(world.spawnQueue).toEqual([]);
-    expect(world.spawnQueueBuilt).toBe(false);
+    expect(world.spawnTimer).toBeGreaterThan(0);
+    expect(world.spawnWarnings).toHaveLength(0);
     updateBattle(run, world, WAVES_BY_ID[3], 1 / 60, idle, createRng(4));
-    expect(world.spawnQueueBuilt).toBe(true);
-    expect(world.spawnRemaining).toBe(WAVES_BY_ID[3].targetUnits);
+    expect(world.spawnWarnings.length + world.enemies.length).toBeLessThanOrEqual(1);
   });
 });

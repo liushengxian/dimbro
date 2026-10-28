@@ -120,6 +120,16 @@
   color: var(--amber-bright);
 }
 
+.upgrade-screen__meta-item--bag {
+  border-color: var(--amber-line);
+  background: rgba(245, 165, 36, 0.06);
+  color: var(--ink-dim);
+}
+
+.upgrade-screen__meta-item--bag strong {
+  color: var(--amber);
+}
+
 .upgrade-screen__meta-label {
   font-size: 0.5625rem;
   letter-spacing: 0.18em;

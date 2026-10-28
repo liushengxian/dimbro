@@ -841,6 +841,24 @@
   letter-spacing: 0.16em;
 }
 
+.battle-hud__bag {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.28rem;
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+}
+
+.battle-hud__bag > strong {
+  color: var(--amber);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
 .battle-hud__score-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

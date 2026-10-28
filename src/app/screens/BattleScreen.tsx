@@ -99,7 +99,7 @@ function passiveChips(
       {
         id: 'simonWillFixIt',
         name: 'Simon今天会修的',
-        status: simonShields > 0 ? `维修护盾 ${simonShields}/${MAX_SHIELDS}` : '波末自动回收',
+        status: simonShields > 0 ? `维修护盾 ${simonShields}/${MAX_SHIELDS}` : '波末立即回收',
         active: simonShields > 0,
         tone: 'amber',
       },
@@ -441,6 +441,13 @@ export function BattleScreen({
             <strong key={snapshot.coins}>{formatNumber(snapshot.coins)}</strong>
             <span>金币</span>
           </div>
+          {snapshot.baggedCoins > 0 ? (
+            <div className="battle-hud__bag" aria-label={`袋中金币 ${snapshot.baggedCoins}`}>
+              <span>袋中</span>
+              <strong>{formatNumber(snapshot.baggedCoins)}</strong>
+              <span>枚</span>
+            </div>
+          ) : null}
           <div className="battle-hud__score-stats">
             <div className="battle-hud__score-stat">
               <span>累计击杀</span>

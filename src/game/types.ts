@@ -178,10 +178,9 @@ export interface WaveDef {
   reward: number;
   label: string;
   hint: string;
-  /** 预生成队列中的杂兵数量；精英不占用该数量。 */
-  targetUnits: number;
-  /** 本波目标总血量，包含精英；队列按扣除精英后的杂兵血量生成。 */
-  targetHp: number;
+  /** 普通敌人两次刷新之间的基础间隔（秒）；波次内持续刷新直到计时结束。 */
+  spawnInterval: number;
+  /** 刷新权重，只影响敌人类型比例，不限制总数。 */
   spawnWeights: Partial<Record<EnemyId, number>>;
   /** 精英出现时机，按波次时长归一化到 0–1。 */
   eliteAtPct: number[];
@@ -209,6 +208,8 @@ export interface RunState {
   coins: number;
   /** 金币加成的小数余量，保证 +15% / +30% 在 1 金币掉落上也能长期生效。 */
   coinRemainder: number;
+  /** 未拾取金币进入袋子后，下波拾取时逐枚返还；Boss 波前会自动清空。 */
+  baggedCoins: number;
   currentHp: number;
   shields: number;
   upgrades: Partial<Record<UpgradeId, number>>;
@@ -426,7 +427,8 @@ export interface WaveStats {
   pickedCoins: number;
   reward: number;
   simonRepairCoins: number;
-  lostCoins: number;
+  /** 本波结束时转入袋子的未拾取金币。 */
+  baggedCoins: number;
   shieldsGained: number;
   kills: number;
   damage: number;
@@ -449,11 +451,6 @@ export interface BattleWorld {
   effects: EffectEntity[];
   damageTexts: DamageText[];
   spawnWarnings: SpawnWarning[];
-  /** 本波预生成的杂兵刷怪队列。 */
-  spawnQueue: EnemyId[];
-  spawnQueueBuilt: boolean;
-  /** 队列中剩余未刷出的杂兵数量，用于调试面板。 */
-  spawnRemaining: number;
   spawnTimer: number;
   spawnLocked: boolean;
   eliteSchedule: number[];
@@ -510,7 +507,12 @@ export interface WaveSummary {
   pickedCoins: number;
   reward: number;
   simonRepairCoins: number;
-  lostCoins: number;
+  /** 本波结束时转入袋子的未拾取金币。 */
+  baggedCoins: number;
+  /** 结算后袋中剩余金币。 */
+  baggedTotal: number;
+  /** 进入 Boss 波前自动回收的袋中金币。 */
+  bossBagRecovered: number;
   shieldsGained: number;
   kills: number;
   damage: number;
@@ -576,6 +578,7 @@ export interface DebugState {
   playerProjectiles: number;
   enemyProjectiles: number;
   pickups: number;
+  /** 剩余刷怪数；普通波为 Infinity（无限刷怪）。 */
   spawnRemaining: number;
   seed: number;
   wave: number;
@@ -602,6 +605,7 @@ export interface SessionSnapshot {
   };
   stats: PlayerStats | null;
   coins: number;
+  baggedCoins: number;
   weapons: WeaponHudState[];
   passives: PassiveHudState | null;
   boss: BossHudState | null;

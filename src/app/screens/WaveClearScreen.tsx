@@ -37,9 +37,11 @@ export function WaveClearScreen({
   const picked = Math.max(0, Math.round(summary.pickedCoins));
   const reward = Math.max(0, Math.round(summary.reward));
   const repaired = Math.max(0, Math.round(summary.simonRepairCoins));
-  const lost = Math.max(0, Math.round(summary.lostCoins));
+  const bagged = Math.max(0, Math.round(summary.baggedCoins));
+  const baggedTotal = Math.max(0, Math.round(summary.baggedTotal));
+  const bossBagRecovered = Math.max(0, Math.round(summary.bossBagRecovered));
   const shields = Math.max(0, Math.round(summary.shieldsGained));
-  const income = picked + reward + repaired;
+  const income = picked + reward + repaired + bossBagRecovered;
 
   return (
     <section
@@ -92,12 +94,27 @@ export function WaveClearScreen({
                 </em>
               )}
             </div>
-            <div className="wave-clear__coin-row">
-              <span>未拾取损失</span>
-              <strong className={lost > 0 ? 'is-negative' : 'is-muted'}>
-                {lost > 0 ? `-${formatCount(lost)}` : '0'}
-              </strong>
-            </div>
+            {bossBagRecovered > 0 ? (
+              <div className="wave-clear__coin-row">
+                <span>{bagged > 0 ? 'Boss 前回收（含本波漏捡）' : 'Boss 前回收'}</span>
+                <strong className="is-positive">+{formatCount(bossBagRecovered)}</strong>
+              </div>
+            ) : characterName === 'Simon' ? null : (
+              <>
+                <div className="wave-clear__coin-row">
+                  <span>未拾取（转入下波）</span>
+                  <strong className={bagged > 0 ? 'is-amber' : 'is-muted'}>
+                    {formatCount(bagged)}
+                  </strong>
+                </div>
+                {baggedTotal > 0 ? (
+                  <div className="wave-clear__coin-row">
+                    <span>袋中余额</span>
+                    <strong className="is-amber">{formatCount(baggedTotal)}</strong>
+                  </div>
+                ) : null}
+              </>
+            )}
             <div className="wave-clear__coin-row">
               <span>维修护盾获得</span>
               <strong className={shields > 0 ? 'is-mint' : 'is-muted'}>
@@ -136,7 +153,9 @@ export function WaveClearScreen({
 
             <p className="wave-clear__note">
               <Icon name="info" size={13} />
-              金币结算先于完成奖励发放；维修护盾最多持有 2 层并跨波保留。
+              {characterName === 'Simon'
+                ? 'Simon 已立即回收全部漏捡金币；维修护盾最多持有 2 层并跨波保留。'
+                : '未拾取金币会进入袋子，下波拾取时逐枚返还；Boss 波前自动回收。维修护盾最多持有 2 层并跨波保留。'}
             </p>
           </section>
         </div>

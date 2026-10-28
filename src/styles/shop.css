@@ -113,6 +113,16 @@
   color: var(--amber-bright);
 }
 
+.shop-screen__stat--bag {
+  border-color: var(--amber-line);
+  background: rgba(245, 165, 36, 0.06);
+  color: var(--ink-dim);
+}
+
+.shop-screen__stat--bag strong {
+  color: var(--amber);
+}
+
 .shop-screen__stat-label {
   font-size: 0.5625rem;
   letter-spacing: 0.14em;

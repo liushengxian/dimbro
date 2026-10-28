@@ -116,6 +116,16 @@ export function ShopScreen({
               <strong>{snapshot.coins}</strong>
               <span>金币</span>
             </span>
+            {snapshot.baggedCoins > 0 ? (
+              <span
+                className="shop-screen__stat shop-screen__stat--bag"
+                aria-label={`袋中金币 ${snapshot.baggedCoins}`}
+              >
+                <Icon name="coin" size={14} />
+                <strong>{snapshot.baggedCoins}</strong>
+                <span>袋中</span>
+              </span>
+            ) : null}
             <span className="shop-screen__stat">
               <span className="shop-screen__stat-label">当前波次</span>
               <strong>{String(snapshot.wave).padStart(2, '0')}</strong>

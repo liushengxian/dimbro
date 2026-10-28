@@ -9,6 +9,7 @@ interface SessionInternals {
   run: NonNullable<ReturnType<GameSession['getSnapshot']>['run']>;
   step(dt: number): void;
   publish(): void;
+  startBattle(): void;
 }
 
 function internals(session: GameSession): SessionInternals {
@@ -72,7 +73,7 @@ function reachShop(session: GameSession): void {
 }
 
 describe('GameSession wave settlement', () => {
-  it('loses unpicked coins for non-Simon characters', () => {
+  it('bags unpicked coins for non-Simon characters', () => {
     const session = new GameSession();
     session.startNewRun('sunsetNeedle');
     const state = internals(session);
@@ -84,10 +85,69 @@ describe('GameSession wave settlement', () => {
 
     const snapshot = session.getSnapshot();
     expect(snapshot.phase).toBe('waveClear');
-    expect(snapshot.waveSummary?.lostCoins).toBe(16);
+    expect(snapshot.waveSummary?.baggedCoins).toBe(16);
+    expect(snapshot.waveSummary?.baggedTotal).toBe(16);
+    expect(snapshot.waveSummary?.bossBagRecovered).toBe(0);
     expect(snapshot.waveSummary?.simonRepairCoins).toBe(0);
     expect(snapshot.coins).toBe(30);
+    expect(snapshot.run?.baggedCoins).toBe(16);
     expect(snapshot.run?.shields).toBe(0);
+  });
+
+  it('redeems one bagged coin per pickup', () => {
+    const session = new GameSession();
+    session.startNewRun('sunsetNeedle');
+    const state = internals(session);
+    state.run.baggedCoins = 2;
+    const coin = pickup(1, 1);
+    coin.x = state.world.player.x;
+    coin.y = state.world.player.y;
+    state.world.pickups = [coin];
+    state.step(1 / 60);
+
+    const snapshot = session.getSnapshot();
+    expect(snapshot.coins).toBe(17);
+    expect(snapshot.baggedCoins).toBe(1);
+    expect(state.world.waveStats.pickedCoins).toBe(2);
+  });
+
+  it('keeps the bag through upgrade and shop', () => {
+    const session = new GameSession();
+    session.startNewRun('sunsetNeedle');
+    const state = internals(session);
+    state.run.baggedCoins = 7;
+    session.debugFinishWave();
+    state.step(1 / 60);
+    session.beginUpgrade();
+    const choice = session.getSnapshot().upgradeChoices[0];
+    if (!choice) throw new Error('no upgrade choice');
+    session.chooseUpgrade(choice.id);
+    session.nextWave();
+
+    const snapshot = session.getSnapshot();
+    expect(snapshot.phase).toBe('battle');
+    expect(snapshot.wave).toBe(2);
+    expect(snapshot.baggedCoins).toBe(7);
+  });
+
+  it('recovers the bag before the boss wave', () => {
+    const session = new GameSession();
+    session.startNewRun('sunsetNeedle');
+    const state = internals(session);
+    state.run.wave = 7;
+    state.startBattle();
+    state.run.baggedCoins = 9;
+    state.world.pickups = [pickup(1, 6)];
+    state.world.timeLeft = 0.01;
+    state.step(1 / 60);
+
+    const snapshot = session.getSnapshot();
+    expect(snapshot.phase).toBe('waveClear');
+    expect(snapshot.waveSummary?.baggedCoins).toBe(6);
+    expect(snapshot.waveSummary?.baggedTotal).toBe(0);
+    expect(snapshot.waveSummary?.bossBagRecovered).toBe(15);
+    expect(snapshot.run?.baggedCoins).toBe(0);
+    expect(snapshot.coins).toBe(52);
   });
 
   it('auto-collects for Simon and grants one repair shield per 15 coins', () => {
@@ -103,7 +163,9 @@ describe('GameSession wave settlement', () => {
     const snapshot = session.getSnapshot();
     expect(snapshot.phase).toBe('waveClear');
     expect(snapshot.waveSummary?.simonRepairCoins).toBe(16);
-    expect(snapshot.waveSummary?.lostCoins).toBe(0);
+    expect(snapshot.waveSummary?.baggedCoins).toBe(0);
+    expect(snapshot.waveSummary?.baggedTotal).toBe(0);
+    expect(snapshot.waveSummary?.bossBagRecovered).toBe(0);
     expect(snapshot.waveSummary?.shieldsGained).toBe(1);
     expect(snapshot.run?.shields).toBe(1);
     expect(snapshot.coins).toBe(46);

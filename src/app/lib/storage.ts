@@ -177,6 +177,9 @@ function parseRun(value: unknown): RunState | null {
   const coinRemainder = value.coinRemainder === undefined ? 0 : value.coinRemainder;
   if (!isFiniteNumber(coinRemainder) || coinRemainder < 0 || coinRemainder >= 1) return null;
 
+  const baggedCoins = value.baggedCoins === undefined ? 0 : value.baggedCoins;
+  if (!isNonNegativeInteger(baggedCoins)) return null;
+
   const shields = value.shields;
   if (!isIntegerInRange(shields, 0, BALANCE.simonMaxShields)) return null;
 
@@ -201,6 +204,7 @@ function parseRun(value: unknown): RunState | null {
     wave,
     coins,
     coinRemainder,
+    baggedCoins,
     currentHp,
     shields,
     upgrades,

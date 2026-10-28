@@ -84,9 +84,6 @@ export function createBattle(run: RunState, wave: WaveDef): BattleWorld {
     effects: [],
     damageTexts: [],
     spawnWarnings: [],
-    spawnQueue: [],
-    spawnQueueBuilt: false,
-    spawnRemaining: 0,
     spawnTimer: 0.8,
     spawnLocked: false,
     eliteSchedule: wave.eliteAtPct.map((pct) => (wave.duration ?? 0) * pct),
@@ -107,7 +104,7 @@ export function createBattle(run: RunState, wave: WaveDef): BattleWorld {
       pickedCoins: 0,
       reward: 0,
       simonRepairCoins: 0,
-      lostCoins: 0,
+      baggedCoins: 0,
       shieldsGained: 0,
       kills: 0,
       damage: 0,
@@ -120,7 +117,7 @@ export function createBattle(run: RunState, wave: WaveDef): BattleWorld {
 
   if (wave.boss) {
     const bossDef = ENEMIES_BY_ID.forgeCore;
-    spawnEnemy(world, wave.wave, bossDef, WORLD_WIDTH / 2, WORLD_HEIGHT / 2 - 40);
+    spawnEnemy(world, wave.wave, bossDef, WORLD_WIDTH / 2, BALANCE.bossSpawnY);
   }
 
   return world;
@@ -993,128 +990,19 @@ function updateSpawnWarnings(
 }
 
 /**
- * 按 targetUnits / targetHp 预生成本波杂兵队列。
- *
- * 在“恰好 targetUnits 个杂兵”的约束下，用 DP 选择各类型的数量，
- * 使总血量尽量接近 targetHp 扣除精英后的剩余值；权重决定同血量下的
- * 类型偏好。生成后打乱顺序，避免每波固定按类型成组出现。
+ * 按 spawnWeights 权重随机挑选下一次刷新的敌人。
+ * 波次不再预生成固定队列，权重只决定类型比例，不限制刷新总数。
  */
-export function buildSpawnQueue(wave: WaveDef, rng: Rng): EnemyId[] {
-  const units = Math.max(0, Math.floor(wave.targetUnits));
-  if (units === 0) return [];
-
-  const hpScale =
-    (1 + BALANCE.enemyHpGrowth * (wave.wave - 1)) * BALANCE.enemyHpMultiplier;
-  const candidates: Array<{ id: EnemyId; hp: number; weight: number }> = [];
+export function pickSpawnEnemy(wave: WaveDef, rng: Rng): EnemyId | null {
+  const candidates: Array<{ value: EnemyId; weight: number }> = [];
   for (const [id, weight] of Object.entries(wave.spawnWeights)) {
     const enemyId = id as EnemyId;
-    const def = ENEMIES_BY_ID[enemyId];
     const safeWeight = weight ?? 0;
-    if (!def || safeWeight <= 0) continue;
-    candidates.push({
-      id: enemyId,
-      hp: Math.max(1, Math.round(def.hp * hpScale)),
-      weight: safeWeight,
-    });
+    if (!ENEMIES_BY_ID[enemyId] || safeWeight <= 0) continue;
+    candidates.push({ value: enemyId, weight: safeWeight });
   }
-  if (candidates.length === 0) return [];
-
-  const eliteHp = wave.eliteAtPct.length * ENEMIES_BY_ID.overseer.hp * hpScale;
-  const trashHpTarget = Math.max(0, wave.targetHp - eliteHp);
-  const hpJitter =
-    1 - BALANCE.spawnQueueHpJitterPct + rng.next() * BALANCE.spawnQueueHpJitterPct * 2;
-  const hpTarget = Math.max(1, Math.round(trashHpTarget * hpJitter));
-  const weighted = candidates.map((candidate) => ({
-    ...candidate,
-    weight:
-      candidate.weight *
-      (1 -
-        BALANCE.spawnQueueWeightJitterPct +
-        rng.next() * BALANCE.spawnQueueWeightJitterPct * 2),
-  }));
-
-  const maxHp = Math.max(...weighted.map((candidate) => candidate.hp));
-  const maxSum = units * maxHp;
-  const unreachable = Number.NEGATIVE_INFINITY;
-  const dp: number[][] = Array.from({ length: units + 1 }, () =>
-    Array<number>(maxSum + 1).fill(unreachable),
-  );
-  const choice: number[][] = Array.from({ length: units + 1 }, () =>
-    Array<number>(maxSum + 1).fill(-1),
-  );
-  dp[0][0] = 0;
-
-  for (let used = 0; used < units; used += 1) {
-    for (let hp = 0; hp <= maxSum; hp += 1) {
-      const score = dp[used][hp];
-      if (score === unreachable) continue;
-      for (let index = 0; index < weighted.length; index += 1) {
-        const candidate = weighted[index];
-        if (!candidate) continue;
-        const nextHp = hp + candidate.hp;
-        if (nextHp > maxSum) continue;
-        const nextScore = score + candidate.weight;
-        if (nextScore > dp[used + 1][nextHp]) {
-          dp[used + 1][nextHp] = nextScore;
-          choice[used + 1][nextHp] = index;
-        }
-      }
-    }
-  }
-
-  let bestHp = -1;
-  let bestScore = unreachable;
-  for (let hp = 0; hp <= maxSum; hp += 1) {
-    const score = dp[units][hp];
-    if (score === unreachable) continue;
-    const distance = Math.abs(hp - hpTarget);
-    const bestDistance =
-      bestHp < 0 ? Number.POSITIVE_INFINITY : Math.abs(bestHp - hpTarget);
-    if (distance < bestDistance || (distance === bestDistance && score > bestScore)) {
-      bestHp = hp;
-      bestScore = score;
-    }
-  }
-
-  const counts = new Map<EnemyId, number>();
-  if (bestHp >= 0) {
-    let hp = bestHp;
-    for (let used = units; used > 0; used -= 1) {
-      const index = choice[used][hp];
-      if (index < 0) break;
-      const candidate = weighted[index];
-      if (!candidate) break;
-      counts.set(candidate.id, (counts.get(candidate.id) ?? 0) + 1);
-      hp -= candidate.hp;
-    }
-  }
-
-  const queue: EnemyId[] = [];
-  for (const candidate of weighted) {
-    const count = counts.get(candidate.id) ?? 0;
-    for (let index = 0; index < count; index += 1) queue.push(candidate.id);
-  }
-
-  // 极端配置下的兜底：用权重最高的类型补齐，保证队列长度稳定。
-  while (queue.length < units) {
-    let best = weighted[0];
-    for (const candidate of weighted) {
-      if (!best || candidate.weight > best.weight) best = candidate;
-    }
-    if (!best) break;
-    queue.push(best.id);
-  }
-
-  for (let index = queue.length - 1; index > 0; index -= 1) {
-    const swap = rng.int(0, index);
-    const value = queue[index];
-    const other = queue[swap];
-    if (value !== undefined && other !== undefined) {
-      queue[index] = other;
-      queue[swap] = value;
-    }
-  }
-  return queue;
+  if (candidates.length === 0) return null;
+  return rng.weightedPick(candidates);
 }
 
 function updateSpawner(
@@ -1140,13 +1028,6 @@ function updateSpawner(
     addSpawnWarning(world, point.x, point.y, 'overseer', BALANCE.spawnWarning);
   }
 
-  if (!world.spawnQueueBuilt) {
-    world.spawnQueue = buildSpawnQueue(wave, rng);
-    world.spawnQueueBuilt = true;
-    world.spawnRemaining = world.spawnQueue.length;
-  }
-  if (world.spawnQueue.length === 0) return;
-
   world.spawnTimer -= dt;
   if (world.spawnTimer > 0) return;
 
@@ -1155,12 +1036,17 @@ function updateSpawner(
     return;
   }
 
-  const defId = world.spawnQueue.shift();
-  if (!defId) return;
-  world.spawnRemaining = world.spawnQueue.length;
+  const defId = pickSpawnEnemy(wave, rng);
+  if (!defId) {
+    world.spawnTimer = Math.max(0.35, wave.spawnInterval);
+    return;
+  }
   const point = randomSpawnPoint(world, rng);
   addSpawnWarning(world, point.x, point.y, defId, BALANCE.spawnWarning);
-  world.spawnTimer = world.elapsed < BALANCE.waveSpawnRampSeconds ? 1.5 : BALANCE.spawnInterval;
+  world.spawnTimer =
+    world.elapsed < BALANCE.waveSpawnRampSeconds
+      ? Math.max(BALANCE.spawnRampInterval, wave.spawnInterval)
+      : wave.spawnInterval;
   void run;
 }
 
@@ -1292,16 +1178,18 @@ function updatePickups(
     pickup.y += pickup.vy * dt;
 
     if (distance < world.player.radius + 10) {
-      const awarded = awardCoins(run, pickup.value, stats.coinPct);
+      const bagBonus = run.baggedCoins > 0 ? 1 : 0;
+      if (bagBonus > 0) run.baggedCoins -= 1;
+      const awarded = awardCoins(run, pickup.value + bagBonus, stats.coinPct);
       run.coins += awarded;
       run.totals.coinsEarned += awarded;
       world.waveStats.pickedCoins += awarded;
       pickup.dead = true;
       queueAudio(world, 'coin');
       addEffect(world, 'ring', pickup.x, pickup.y, {
-        radius: 12,
-        life: 0.18,
-        color: '#F5A524',
+        radius: bagBonus > 0 ? 17 : 12,
+        life: bagBonus > 0 ? 0.24 : 0.18,
+        color: bagBonus > 0 ? '#FFE9A8' : '#F5A524',
       });
     }
   }

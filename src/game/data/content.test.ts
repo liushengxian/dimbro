@@ -344,25 +344,17 @@ describe('waves', () => {
     expect(WAVE_LIST.map((wave) => wave.wave)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
-  it('uses fixed target units and hp for waves 1-7 and none for the boss', () => {
-    const expected = [
-      { units: 18, hp: 233 },
-      { units: 26, hp: 317 },
-      { units: 26, hp: 541 },
-      { units: 21, hp: 988 },
-      { units: 31, hp: 1092 },
-      { units: 23, hp: 1404 },
-      { units: 26, hp: 1872 },
-    ];
+  it('controls infinite spawn pressure with a per-wave interval', () => {
+    const intervals = [1.4, 1.2, 1.05, 0.8, 0.7, 0.6, 0.5];
 
     for (let index = 0; index < 7; index += 1) {
       const wave = WAVE_LIST[index];
-      const target = expected[index];
+      const interval = intervals[index];
       expect(wave).toBeDefined();
-      expect(target).toBeDefined();
-      if (!wave || !target) continue;
-      expect(wave.targetUnits).toBe(target.units);
-      expect(wave.targetHp).toBe(target.hp);
+      expect(interval).toBeDefined();
+      if (!wave || interval === undefined) continue;
+      expect(wave.spawnInterval).toBe(interval);
+      expect(wave.spawnInterval).toBeGreaterThan(0);
       const totalWeight = Object.values(wave.spawnWeights).reduce(
         (total, weight) => total + (weight ?? 0),
         0,
@@ -370,9 +362,15 @@ describe('waves', () => {
       expect(totalWeight).toBe(100);
     }
 
+    for (let index = 1; index < 7; index += 1) {
+      const previous = WAVE_LIST[index - 1];
+      const current = WAVE_LIST[index];
+      if (!previous || !current) continue;
+      expect(current.spawnInterval).toBeLessThan(previous.spawnInterval);
+    }
+
     const boss = WAVE_LIST[7];
-    expect(boss?.targetUnits).toBe(0);
-    expect(boss?.targetHp).toBe(0);
+    expect(boss?.spawnInterval).toBe(0);
     expect(boss?.spawnWeights).toEqual({});
     expect(boss?.duration).toBeNull();
   });

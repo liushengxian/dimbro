@@ -10,6 +10,7 @@ import '../../styles/upgrade.css';
 export interface UpgradeScreenProps {
   choices: UpgradeChoice[];
   coins: number;
+  baggedCoins: number;
   wave: number;
   onChoose: (id: UpgradeChoice['id']) => void;
   onSkip: () => void;
@@ -20,6 +21,7 @@ const SKIP_REWARD = 8;
 export function UpgradeScreen({
   choices,
   coins,
+  baggedCoins,
   wave,
   onChoose,
   onSkip,
@@ -64,12 +66,25 @@ export function UpgradeScreen({
             </p>
           </div>
 
-          <div className="upgrade-screen__meta" aria-label={`当前金币 ${coins}，波次 ${wave}`}>
+          <div
+            className="upgrade-screen__meta"
+            aria-label={`当前金币 ${coins}，袋中金币 ${baggedCoins}，波次 ${wave}`}
+          >
             <span className="upgrade-screen__meta-item upgrade-screen__meta-item--coins">
               <Icon name="coin" size={16} />
               <strong>{coins}</strong>
               <span>金币</span>
             </span>
+            {baggedCoins > 0 ? (
+              <span
+                className="upgrade-screen__meta-item upgrade-screen__meta-item--bag"
+                aria-label={`袋中金币 ${baggedCoins}`}
+              >
+                <Icon name="coin" size={14} />
+                <strong>{baggedCoins}</strong>
+                <span>袋中</span>
+              </span>
+            ) : null}
             <span className="upgrade-screen__meta-item">
               <span className="upgrade-screen__meta-label">WAVE</span>
               <strong>{String(wave).padStart(2, '0')}</strong>

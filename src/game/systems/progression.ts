@@ -188,6 +188,7 @@ export function createRun(characterId: PlayableCharacterId, seed: number): RunSt
     wave: 1,
     coins: BALANCE.startingCoins,
     coinRemainder: 0,
+    baggedCoins: 0,
     currentHp: 1,
     shields: 0,
     upgrades: {},

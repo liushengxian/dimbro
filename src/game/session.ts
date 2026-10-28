@@ -501,7 +501,8 @@ export class GameSession {
     run.currentHp = Math.max(0, world.player.hp);
 
     let repaired = 0;
-    let lost = 0;
+    let bagged = 0;
+    let bossBagRecovered = 0;
     if (run.characterId === 'simon') {
       for (const pickup of world.pickups) {
         const award = awardCoins(run, pickup.value, stats.coinPct);
@@ -518,9 +519,20 @@ export class GameSession {
       world.waveStats.simonRepairCoins = repaired;
       world.waveStats.shieldsGained = gain;
     } else {
-      lost = world.pickups.reduce((sum, pickup) => sum + pickup.value, 0);
+      bagged = world.pickups.reduce((sum, pickup) => sum + pickup.value, 0);
+      run.baggedCoins += bagged;
       world.pickups = [];
-      world.waveStats.lostCoins = lost;
+      world.waveStats.baggedCoins = bagged;
+    }
+
+    const nextWave = WAVES_BY_ID[run.wave + 1];
+    if (nextWave?.boss) {
+      bossBagRecovered = run.baggedCoins;
+      if (bossBagRecovered > 0) {
+        run.baggedCoins = 0;
+        run.coins += bossBagRecovered;
+        run.totals.coinsEarned += bossBagRecovered;
+      }
     }
 
     const reward = this.waveDef.reward;
@@ -533,7 +545,9 @@ export class GameSession {
       pickedCoins: world.waveStats.pickedCoins,
       reward,
       simonRepairCoins: world.waveStats.simonRepairCoins,
-      lostCoins: lost,
+      baggedCoins: bagged,
+      baggedTotal: run.baggedCoins,
+      bossBagRecovered,
       shieldsGained: world.waveStats.shieldsGained,
       kills: world.waveStats.kills,
       damage: world.waveStats.damage,
@@ -690,6 +704,7 @@ export class GameSession {
       },
       stats,
       coins: run?.coins ?? 0,
+      baggedCoins: run?.baggedCoins ?? 0,
       weapons,
       passives,
       boss,
@@ -703,7 +718,7 @@ export class GameSession {
         playerProjectiles: world?.playerProjectiles.length ?? 0,
         enemyProjectiles: world?.enemyProjectiles.length ?? 0,
         pickups: world?.pickups.length ?? 0,
-        spawnRemaining: world?.spawnRemaining ?? 0,
+        spawnRemaining: world ? (world.bossWave ? 0 : Number.POSITIVE_INFINITY) : 0,
         seed: run?.seed ?? 0,
         wave: run?.wave ?? 0,
         phase: this.phase,
