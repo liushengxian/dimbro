@@ -4,6 +4,7 @@
   position: fixed;
   inset: 0;
   z-index: var(--z-overlay);
+  display: flex;
   overflow-x: hidden;
   overflow-y: auto;
   color: var(--ink);
@@ -48,8 +49,7 @@
   flex-direction: column;
   gap: clamp(0.55rem, 1.3vh, 0.85rem);
   width: min(1240px, 100%);
-  min-height: 100%;
-  margin: 0 auto;
+  margin: auto;
   padding: clamp(0.7rem, 2vh, 1.15rem) clamp(1rem, 2.8vw, 2.2rem)
     clamp(0.7rem, 1.8vh, 1rem);
 }
@@ -180,6 +180,18 @@
   font-size: 0.5625rem;
   letter-spacing: 0.05em;
   text-align: right;
+}
+
+.shop-screen__stock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.shop-screen__stock-actions .ui-button {
+  flex: none;
 }
 
 /* Offers ---------------------------------------------------------------- */
@@ -478,7 +490,7 @@
 
 .shop-screen__lower {
   display: grid;
-  flex: 1;
+  flex: none;
   grid-template-columns: minmax(0, 2.2fr) minmax(15rem, 0.6fr);
   gap: clamp(0.5rem, 1vw, 0.8rem);
   min-height: 0;
@@ -499,7 +511,6 @@
 
 .shop-screen__slots {
   display: grid;
-  flex: 1;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: clamp(0.4rem, 0.8vw, 0.65rem);
   min-height: 0;

@@ -146,9 +146,14 @@ export function ShopScreen({
               <span aria-hidden="true">▚</span>
               本波货架
             </h2>
-            <p className="shop-screen__section-note">
-              每件商品限购一次 · 武器重复购买可升级至 Lv.3
-            </p>
+            <div className="shop-screen__stock-actions">
+              <p className="shop-screen__section-note">
+                每件商品限购一次 · 武器重复购买可升级至 Lv.3
+              </p>
+              <Button variant="secondary" size="sm" onClick={handleRefresh}>
+                刷新 <span aria-hidden="true">◉</span> {shop.refreshCost}
+              </Button>
+            </div>
           </div>
 
           <div className="shop-screen__offers">
@@ -333,9 +338,6 @@ export function ShopScreen({
 
         <footer className="shop-screen__footer">
           <div className="shop-screen__footer-left">
-            <Button variant="secondary" size="sm" onClick={handleRefresh}>
-              刷新 <span aria-hidden="true">◉</span> {shop.refreshCost}
-            </Button>
             <p className="shop-screen__footer-note">
               离开商店后本波货架关闭 · 刷新费用逐次增加
             </p>
